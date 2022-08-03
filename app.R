@@ -263,9 +263,35 @@ server <- function(input, output, session) {
               dbGetQuery(pg_con, glue("SELECT * FROM \"{input$schema}\".\"{input$tables}\" ORDER BY RANDOM() LIMIT 100"))
             }
           )
+        ),
+        footer = tagList(
+          tags$button(class = "btn btn-outline-secondary", id = "downloadPreview", style = "display: none;", "Download"),
+          modalButton("Dismiss")
         )
       )
     )
+    
+    # Don't allow downloading if query result too big
+    if(n_rows < 50000 & n_rows != 0){showElement("downloadPreview")}
+    
+    # Download the query result
+    onclick("downloadPreview", {
+      result <- tryCatch({
+        
+        # Get query and write to csv
+        write_csv(dbGetQuery(pg_con, glue("SELECT * FROM \"{input$schema}\".\"{input$tables}\" ")), glue("{Sys.getenv(\"USERPROFILE\")}\\Downloads\\query_result_{format(Sys.time(), \"%Y-%m-%d-%H%M%S\")}.csv"))
+        result <- glue("Downloaded Successfully to {Sys.getenv(\"USERPROFILE\")}\\Downloads")
+        
+        # Close the modal and hide the download button
+        removeModal()
+        hideElement("downloadPreview")
+        
+      }, error = function(error){
+        result <- error$message
+      })
+      
+      showNotification(result)
+    })
   })
   
   # Allow deleting a table
@@ -498,14 +524,17 @@ server <- function(input, output, session) {
     onclick("downloadQuery", {
       result <- tryCatch({
         
-        hideElement("downloadQuery")
-        
         # Set search path
         dbSendQuery(pg_con, glue("SET search_path TO public, {input$schema}"))
         
         # Get query and write to csv
         write_csv(dbGetQuery(pg_con, input$query), glue("{Sys.getenv(\"USERPROFILE\")}\\Downloads\\query_result_{format(Sys.time(), \"%Y-%m-%d-%H%M%S\")}.csv"))
-        result <- glue("Downloaded Successfully to {Sys.getenv(\"USERPROFILE\")}\\Downloads}")
+        result <- glue("Downloaded Successfully to {Sys.getenv(\"USERPROFILE\")}\\Downloads")
+        
+        # Close the modal and hide the download button
+        removeModal()
+        hideElement("downloadQuery")
+        
       }, error = function(error){
         result <- error$message
       })
