@@ -391,7 +391,7 @@ server <- function(input, output, session) {
   onclick("manageConnectionsButton", {
     
     # Get most updated connections file
-    connections <- read_csv(glue("{dbc_path}\\database_credentials.csv"))
+    connections <- read_csv(glue("{dbc_path}\\database_credentials.csv"), show_col_types = FALSE)
     
     # Set table proxy
     proxy = dataTableProxy('dbConnectionsTable')
@@ -422,19 +422,9 @@ server <- function(input, output, session) {
                 editable = TRUE)
     })
     
-    # Save changes to csv file
+    # # Save changes to csv file
     observeEvent(input$dbConnectionsTable_cell_edit, {
-      row <- input$dbConnectionsTable_cell_edit$row
-      col <- input$dbConnectionsTable_cell_edit$col
-      val <- input$dbConnectionsTable_cell_edit$value
-      ifelse(is.double(val),
-             connections[row, col] <- as.double(val),
-             connections[row, col] <- as.character(val)
-             )
-      
-      # Replace the connections file
-      file.remove(glue("{dbc_path}\\database_credentials.csv"))
-      write_csv(connections, glue("{dbc_path}\\database_credentials.csv"))
+     connections <<- editData(connections, input$dbConnectionsTable_cell_edit, proxy)
     })
     
     # Add new row button
@@ -457,6 +447,10 @@ server <- function(input, output, session) {
     
     # Refresh the page
     onclick("manageConfirm", {
+      # Replace the connections file
+      file.remove(glue("{dbc_path}\\database_credentials.csv"))
+      write_csv(connections, glue("{dbc_path}\\database_credentials.csv"))
+      
       updateSelectInput(inputId = "connectionSelect", choices = connections$connection)
       output$dbConnectionsTable <- NULL
     })
