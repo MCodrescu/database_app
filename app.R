@@ -1,0 +1,463 @@
+library(shiny)
+library(shinyjs)
+library(readr)
+library(RPostgres)
+library(dplyr)
+library(glue)
+library(DT)
+
+ui <- bootstrapPage(
+  theme = bslib::bs_theme(version = 5),
+  
+  # Initiate shinyjs
+  useShinyjs(),
+  
+  #######################################################
+  
+  # Navbar
+  tags$nav(class = "navbar navbar-expand-lg navbar-light bg-light",
+           div(class = "container-fluid",
+               tags$a(class = "navbar-brand",
+                      "Database App"),
+               tags$button(class = "navbar-toggler",
+                           type = "button",
+                           "data-bs-toggle" = "collapse",
+                           "data-bs-target" = "#navbarSupportedContent",
+                           tags$span(class = "navbar-toggler-icon")
+               ),
+               div(class = "collapse navbar-collapse",
+                   id = "navbarSupportedContent",
+                   tags$ul(
+                     class = "navbar-nav me-auto mb-2 mb-lg-0",
+                     tags$li(
+                       class = "nav-item",
+                       tags$a(class = "nav-link",
+                              id = "viewNav",
+                              role = "button",
+                              "data-bs-toggle" = "dropdown",
+                              "View"
+                       ),
+                     ),
+                     tags$li(
+                       class = "nav-item",
+                       tags$a(class = "nav-link",
+                              id = "uploadNav",
+                              role = "button",
+                              "data-bs-toggle" = "dropdown",
+                              "Upload"
+                       )
+                       
+                     ),
+                     tags$li(
+                       class = "nav-item",
+                       tags$a(class = "nav-link",
+                              id = "connectionNav",
+                              role = "button",
+                              "data-bs-toggle" = "dropdown",
+                              "Connection"
+                       )
+                       
+                     ),
+                     tags$li(
+                       class = "nav-item",
+                       tags$a(class = "nav-link",
+                              id = "queryNav",
+                              role = "button",
+                              "data-bs-toggle" = "dropdown",
+                              "Query"
+                       )
+                       
+                     ),
+                     
+                   )
+               )
+           )
+  ),
+  
+  #########################################################
+  
+  # Main container
+  div(
+    class = "container py-3",
+    div(
+      class = "row justify-content-center",
+      div(
+        class = "col-8 col-md-4 bg-light py-3 px-5 bordered rounded shadow",
+        
+        # Connection options
+        div(id = "connectionDiv",
+            # Header
+            tags$h3(class = "text-center", "Select a Connection"),
+            
+            # Select a connection
+            selectInput("connectionSelect", "", choices = NULL, width = "100%"),
+            
+            # Connect button
+            tags$button(class = "btn btn-outline-success w-100 mt-2 mb-3", id = "connectButton", "Connect"),
+            
+            # Add connection button
+            tags$button(class = "btn btn-outline-secondary w-100 mt-2 mb-3", id = "manageConnectionsButton", "Manage Connections"),
+            
+            # Connection status
+            p(id = "connectionStatus")
+        ),
+        
+        # View tables
+        div(id = "viewDiv",
+            style = "display: none;",
+            # Header
+            tags$h3(class = "text-center", "View Tables"),
+            
+            # Select schema
+            selectInput("schema", "Schema", choices = NULL, width = "100%"),
+            
+            # Select table
+            selectInput("tables", "Table", choices = NULL, width = "100%"),
+            div(
+              class = "row justify-content-between py-3",
+              
+              # View Table
+              div(
+                class = "col-6",
+                tags$button(id = "viewTable",
+                            class = "btn btn-outline-primary w-100",
+                            "View")
+                
+              ),
+              
+              # Delete Table
+              div(
+                class = "col-6",
+                tags$button(id = "deleteTable",
+                            class = "btn btn-outline-danger w-100",
+                            "Delete")
+              )
+              
+            ),
+        ),
+        
+        # Upload CSV
+        div(id = "uploadDiv",
+            style = "display: none;",
+            
+            # Header
+            tags$h3(class = "text-center", "Upload a CSV"),
+            
+            # File upload to database
+            fileInput("newTableUpload", "", accept = ".csv", width = "100%"),
+        ),
+        
+        # Write Query
+        div(id = "queryDiv",
+            style = "display: none;",
+            
+            # Header
+            tags$h3(class = "text-center", "Query"),
+            
+            # Send query to database
+            textAreaInput("query", "", width = "100%", height = "300px"),
+            tags$button(id = "submitQuery", class = "btn btn-outline-success", "Submit Query")
+        )
+      ),
+    )
+  )
+)
+
+#############################################################
+#############################################################
+#############################################################
+
+server <- function(input, output, session) {
+  
+  connectionStatus <- FALSE
+  connections <- read_csv("database_credentials.csv")
+  
+  ###########################################################
+  
+  # Switch views
+  onclick("viewNav", {
+    if(connectionStatus){
+      hideElement("connectionDiv")
+      hideElement("uploadDiv")
+      hideElement("queryDiv")
+      showElement("viewDiv")
+    } else {
+      showNotification("Please connect to a database first")
+    }
+  })
+  
+  onclick("connectionNav", {
+    showElement("connectionDiv")
+    hideElement("uploadDiv")
+    hideElement("queryDiv")
+    hideElement("viewDiv")
+  })
+  
+  onclick("queryNav", {
+    if(connectionStatus){
+      hideElement("connectionDiv")
+      hideElement("uploadDiv")
+      showElement("queryDiv")
+      hideElement("viewDiv")
+    } else {
+      showNotification("Please connect to a database first")
+    }
+    
+  })
+  
+  onclick("uploadNav", {
+    if (connectionStatus){
+      hideElement("connectionDiv")
+      showElement("uploadDiv")
+      hideElement("queryDiv")
+      hideElement("viewDiv")
+    } else {
+      showNotification("Please connect to a database first")
+    }
+    
+  })
+  
+  ###################################################
+  
+  # Update the connection select
+  updateSelectInput(inputId = "connectionSelect", choices = connections$connection)
+  
+  # Connect to DB
+  onclick("connectButton", {
+   read_csv("database_credentials.csv") %>%
+      filter(connection == input$connectionSelect) ->
+      database_credentials
+    
+    # Get user credentials
+    host <- database_credentials$host
+    username <- database_credentials$username
+    password <- database_credentials$password
+    port <- database_credentials$port
+    database <- database_credentials$database
+    
+    # Try connecting to DB
+    result <- tryCatch({
+      pg_con <- dbConnect(Postgres(),
+                          host = host,
+                          user = username,
+                          password = password,
+                          port = port,
+                          dbname = database
+      )
+      result <- "Success"
+    },
+    error = function(error) {
+      result <- error$message
+    })
+    
+    # Notify of connection result
+    showNotification(result)
+    
+    if(result == "Success"){
+      connectionStatus <- TRUE
+      html("connectionStatus", glue("Connected to: {database_credentials$connection}"))
+      hideElement("connectionDiv")
+      showElement("viewDiv")
+    }
+    
+    # Update table select
+    schema <- dbGetQuery(pg_con, "SELECT table_schema FROM information_schema.tables") %>%
+      distinct(table_schema) %>%
+      arrange(table_schema)
+    
+    updateSelectInput(session, "schema", choices = schema, selected = "public")
+    
+    # Set initial table options
+    get_tables <- function(schema){
+      query <- glue("SELECT table_name FROM information_schema.tables WHERE table_schema = '{schema}'")
+      dbGetQuery(pg_con, query) %>%
+        distinct(table_name) %>%
+        arrange(table_name) %>%
+        pull(table_name)
+    }
+    
+    updateSelectInput(session, "tables", choices = get_tables("public"))
+    
+    # Update table select on schema change
+    onevent("change", "schema", {
+      updateSelectInput(session, "tables", choices = get_tables(input$schema))
+    })
+    
+  })
+
+    
+   ######################################################
+    
+  # View tables on click view button
+  onclick("viewTable", {
+    # Show the modal
+    showModal(
+      modalDialog(
+        easyClose = TRUE,
+        size = "xl",
+        h3(glue("Preview {input$tables} in {input$schema}")),
+        div(
+          class = "table-responsive",
+          style = "max-height: 70vh;",
+          renderDataTable(
+            options = list(dom = 't', paging = FALSE, ordering = FALSE),
+            server = TRUE,
+            rownames = FALSE,
+            {
+              dbGetQuery(pg_con, glue("SELECT * FROM \"{input$schema}\".\"{input$tables}\" ORDER BY RANDOM() LIMIT 100"))
+            }
+          )
+        )
+      )
+    )
+  })
+  
+  # Allow deleting a table
+  onclick("deleteTable", {
+    table <- input$tables
+    showModal(
+      modalDialog(
+        easyClose = TRUE,
+        h3("Confirm Deletion"),
+        p(glue("Are you sure you want to delete the table: {table}?")),
+        footer = tags$button(id = "confirmDelete", class = "btn btn-outline-danger", "Confirm")
+      )
+    )
+    
+    # Confirm delete
+    onclick("confirmDelete", asis = TRUE, {
+      removeModal()
+      
+      result <- tryCatch({
+        dbSendQuery(pg_con, glue("DROP TABLE \"{input$schema}\".\"{table}\""))
+        result <- "Success"
+      }, error = function(error){
+        result <- error$message
+      })
+      
+      # Notify success
+      showNotification(result)
+      
+      # Update select input
+      updateSelectInput(inputId = "tables", choices = get_tables("public"))
+    })
+  })
+  
+  ###########################################
+  
+  # Upload file to DB
+  observeEvent(input$newTableUpload, {
+    # Read csv
+    file <- input$newTableUpload
+    req(file)
+    new_table <- read_csv(file$datapath, show_col_types = FALSE)
+    
+    # Write data frame to DB
+    result <- tryCatch({
+      dbWriteTable(pg_con,
+                   name = gsub(".csv", "", file$name),
+                   value = data.frame(new_table)
+      )
+      result <- "Success"
+    },
+    error = function(error) {
+      result <- error$message
+    }
+    )
+    
+    # Show result
+    showNotification(result, duration = 3)
+    
+    # Update select input
+    updateSelectInput(inputId = "tables", choices = get_tables("public"))
+  })
+  
+  ###########################################
+  
+  # Manage connections modal
+  onclick("manageConnectionsButton", {
+    
+    # Get most updated connections file
+    connections <- read_csv("database_credentials.csv")
+    
+    # Set table proxy
+    proxy = dataTableProxy('dbConnectionsTable')
+    
+    # Show the modal
+    showModal(
+      modalDialog(
+        easyClose = TRUE,
+        size = "xl",
+        h3("Manage Connections"),
+        div(
+          class = "table-responsive",
+          style = "max-height: 70vh;",
+          DTOutput("dbConnectionsTable")
+        ),
+        footer = tagList(
+          tags$button(id = "addNewConnection", class = "btn btn-outline-success", "Add New"),
+          tags$button(id = "deleteConnection", class = "btn btn-outline-danger", "Delete"),
+          tags$button(id = "manageConfirm", class = "btn btn-outline-secondary", "Confirm", "data-bs-dismiss" = "modal")
+        )
+      )
+    )
+    
+    # Create an editable datatable
+    output$dbConnectionsTable <- renderDT({
+      datatable(connections,
+                options = list(dom = 't'),
+                editable = TRUE)
+    })
+    
+    # Save changes to csv file
+    observeEvent(input$dbConnectionsTable_cell_edit, {
+      row <- input$dbConnectionsTable_cell_edit$row
+      col <- input$dbConnectionsTable_cell_edit$col
+      val <- input$dbConnectionsTable_cell_edit$value
+      ifelse(is.double(val),
+             connections[row, col] <- as.double(val),
+             connections[row, col] <- as.character(val)
+             )
+      
+      # Replace the connections file
+      file.remove("database_credentials.csv")
+      write_csv(connections, "database_credentials.csv")
+    })
+    
+    # Add new row button
+    onclick("addNewConnection", {
+      connections[nrow(connections) + 1, ] <- data.frame(matrix(nrow = 1, ncol = 6))
+      replaceData(proxy, connections)
+    })
+    
+    # Delete row button
+    onclick("deleteConnection", {
+      row_n <- input$dbConnectionsTable_rows_selected
+      connections <- connections[-c(row_n), ]
+      replaceData(proxy, connections)
+      
+      # Replace the connections file
+      file.remove("database_credentials.csv")
+      write_csv(connections, "database_credentials.csv")
+      
+    })
+    
+    # Refresh the page
+    onclick("manageConfirm", {
+      updateSelectInput(inputId = "connectionSelect", choices = connections$connection)
+      output$dbConnectionsTable <- NULL
+    })
+    
+    
+  })
+  
+  
+  # Disconnect from DB
+  onStop(function(){
+    dbDisconnect(pg_con)
+  })
+  
+  
+}
+
+shinyApp(ui, server)
