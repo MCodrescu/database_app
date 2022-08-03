@@ -272,7 +272,7 @@ server <- function(input, output, session) {
     )
     
     # Don't allow downloading if query result too big
-    if(n_rows < 50000 & n_rows != 0){showElement("downloadPreview")}
+    if(n_rows < 50000 & n_rows != 0){showElement("downloadPreview")} else{hideElement("downloadPreview")}
     
     # Download the query result
     onclick("downloadPreview", {
@@ -282,14 +282,9 @@ server <- function(input, output, session) {
         write_csv(dbGetQuery(pg_con, glue("SELECT * FROM \"{input$schema}\".\"{input$tables}\" ")), glue("{Sys.getenv(\"USERPROFILE\")}\\Downloads\\query_result_{format(Sys.time(), \"%Y-%m-%d-%H%M%S\")}.csv"))
         result <- glue("Downloaded Successfully to {Sys.getenv(\"USERPROFILE\")}\\Downloads")
         
-        # Close the modal and hide the download button
-        removeModal()
-        hideElement("downloadPreview")
-        
       }, error = function(error){
         result <- error$message
       })
-      
       showNotification(result)
     })
   })
@@ -518,7 +513,7 @@ server <- function(input, output, session) {
     )
     
     # Don't allow downloading if query result too big
-    if(n_rows < 50000 & n_rows != 0){showElement("downloadQuery")}
+    if(n_rows < 50000 & n_rows != 0){showElement("downloadQuery")}else{hide("downloadQuery")}
     
     # Download the query result
     onclick("downloadQuery", {
@@ -530,10 +525,6 @@ server <- function(input, output, session) {
         # Get query and write to csv
         write_csv(dbGetQuery(pg_con, input$query), glue("{Sys.getenv(\"USERPROFILE\")}\\Downloads\\query_result_{format(Sys.time(), \"%Y-%m-%d-%H%M%S\")}.csv"))
         result <- glue("Downloaded Successfully to {Sys.getenv(\"USERPROFILE\")}\\Downloads")
-        
-        # Close the modal and hide the download button
-        removeModal()
-        hideElement("downloadQuery")
         
       }, error = function(error){
         result <- error$message
