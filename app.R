@@ -169,8 +169,21 @@ ui <- bootstrapPage(
 
 server <- function(input, output, session) {
   
+  # Set initial connection status
   connectionStatus <- FALSE
-  connections <- read_csv("database_credentials.csv")
+  
+  # Create a place to store DB credentials
+  dbc_path <- glue("{Sys.getenv(\"USERPROFILE\")}\\AppData\\Local\\Programs\\Globys_App\\")
+  if(file.exists(glue("{dbc_path}\\database_credentials.csv"))){
+    connections <- read_csv(glue("{dbc_path}\\database_credentials.csv"))
+  } else {
+    dir.create(dbc_path)
+    file.create(glue("{dbc_path}\\database_credentials.csv"))
+    initial_credentials <- as.data.frame(matrix(nrow = 1, ncol = 6))
+    colnames(initial_credentials) <- c("connection", "host","username", "password", "port", "database")
+    write_csv(initial_credentials, glue("{dbc_path}\\database_credentials.csv"))
+  }
+  
   
   ###########################################################
   
@@ -224,7 +237,7 @@ server <- function(input, output, session) {
   
   # Connect to DB
   onclick("connectButton", {
-   read_csv("database_credentials.csv") %>%
+   read_csv(glue("{dbc_path}\\database_credentials.csv")) %>%
       filter(connection == input$connectionSelect) ->
       database_credentials
     
@@ -378,7 +391,7 @@ server <- function(input, output, session) {
   onclick("manageConnectionsButton", {
     
     # Get most updated connections file
-    connections <- read_csv("database_credentials.csv")
+    connections <- read_csv(glue("{dbc_path}\\database_credentials.csv"))
     
     # Set table proxy
     proxy = dataTableProxy('dbConnectionsTable')
@@ -420,8 +433,8 @@ server <- function(input, output, session) {
              )
       
       # Replace the connections file
-      file.remove("database_credentials.csv")
-      write_csv(connections, "database_credentials.csv")
+      file.remove(glue("{dbc_path}\\database_credentials.csv"))
+      write_csv(connections, glue("{dbc_path}\\database_credentials.csv"))
     })
     
     # Add new row button
@@ -437,8 +450,8 @@ server <- function(input, output, session) {
       replaceData(proxy, connections)
       
       # Replace the connections file
-      file.remove("database_credentials.csv")
-      write_csv(connections, "database_credentials.csv")
+      file.remove(glue("{dbc_path}\\database_credentials.csv"))
+      write_csv(connections, glue("{dbc_path}\\database_credentials.csv"))
       
     })
     
