@@ -437,6 +437,9 @@ server <- function(input, output, session) {
       }
       
       result <- tryCatch({
+        # Set search path
+        dbSendQuery(pg_con, glue("SET search_path TO public, {input$schema}"))
+        
         # Get the number of rows
         dbSendQuery(pg_con, glue("CREATE TEMP VIEW temp_view_1234 AS ({input$query})"))
         n_rows <- dbGetQuery(pg_con, "SELECT COUNT(*) FROM temp_view_1234")$count
@@ -451,6 +454,10 @@ server <- function(input, output, session) {
       
     } else {
       result <- tryCatch({
+        # Set search path
+        dbSendQuery(pg_con, glue("SET search_path TO public, {input$schema}"))
+        
+        # Send query
         dbSendQuery(pg_con, query)
         result <- data.frame(result = "Success")
       },
@@ -490,7 +497,13 @@ server <- function(input, output, session) {
     # Download the query result
     onclick("downloadQuery", {
       result <- tryCatch({
+        
         hideElement("downloadQuery")
+        
+        # Set search path
+        dbSendQuery(pg_con, glue("SET search_path TO public, {input$schema}"))
+        
+        # Get query and write to csv
         write_csv(dbGetQuery(pg_con, input$query), glue("{Sys.getenv(\"USERPROFILE\")}\\Downloads\\query_result_{format(Sys.time(), \"%Y-%m-%d-%H%M%S\")}.csv"))
         result <- "Success"
       }, error = function(error){
