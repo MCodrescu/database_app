@@ -411,6 +411,11 @@ server <- function(input, output, session) {
       }
       
       result <- tryCatch({
+        # Get the number of rows
+        dbSendQuery(pg_con, glue("CREATE TEMP VIEW temp_view_1234 AS ({input$query})"))
+        n_rows <- dbGetQuery(pg_con, "SELECT COUNT(*) FROM temp_view_1234")$count
+        
+        # Get the result
         dbGetQuery(pg_con, query)
       },
       error = function(error) {
@@ -435,6 +440,7 @@ server <- function(input, output, session) {
         easyClose = TRUE,
         size = "xl",
         h3("Query Preview"),
+        p(glue("Result: {n_rows} rows")),
         div(
           class = "table-responsive",
           style = "max-height: 70vh;",
@@ -446,9 +452,26 @@ server <- function(input, output, session) {
               result
             }
           )
+        ),
+        footer = tagList(
+          tags$button(class = "btn btn-outline-secondary", id = "downloadQuery", "Download")
         )
       )
     )
+    
+    # Download the query result
+    onclick("downloadQuery", {
+      tryCatch({
+        if (n_rows < 50000){
+          write_csv(dbGetQuery(pg_con, input$query))
+        } else {
+          showNotification("Result is more than 50,000 rows. Download not permitted.")
+        }
+        
+      }, error = function(error){
+        showNotification(error$message)
+      })
+    })
     
     # Update the select input
     updateSelectInput(inputId = "tables", choices = get_tables("public"))
