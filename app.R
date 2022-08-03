@@ -505,7 +505,7 @@ server <- function(input, output, session) {
         
         # Get query and write to csv
         write_csv(dbGetQuery(pg_con, input$query), glue("{Sys.getenv(\"USERPROFILE\")}\\Downloads\\query_result_{format(Sys.time(), \"%Y-%m-%d-%H%M%S\")}.csv"))
-        result <- "Success"
+        result <- glue("Downloaded Successfully to {Sys.getenv(\"USERPROFILE\")}\\Downloads}")
       }, error = function(error){
         result <- error$message
       })
