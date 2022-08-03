@@ -507,7 +507,8 @@ server <- function(input, output, session) {
           )
         ),
         footer = tagList(
-          tags$button(class = "btn btn-outline-secondary", id = "downloadQuery", style = "display: none;", "Download")
+          tags$button(class = "btn btn-outline-secondary", id = "downloadQuery", style = "display: none;", "Download"),
+          modalButton("Dismiss")
         )
       )
     )
