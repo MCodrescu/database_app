@@ -41,30 +41,10 @@ ui <- bootstrapPage(
                      tags$li(
                        class = "nav-item",
                        tags$a(class = "nav-link",
-                              id = "uploadNav",
-                              role = "button",
-                              "data-bs-toggle" = "dropdown",
-                              "Upload"
-                       )
-                       
-                     ),
-                     tags$li(
-                       class = "nav-item",
-                       tags$a(class = "nav-link",
                               id = "connectionNav",
                               role = "button",
                               "data-bs-toggle" = "dropdown",
                               "Connection"
-                       )
-                       
-                     ),
-                     tags$li(
-                       class = "nav-item",
-                       tags$a(class = "nav-link",
-                              id = "queryNav",
-                              role = "button",
-                              "data-bs-toggle" = "dropdown",
-                              "Query"
                        )
                        
                      ),
@@ -82,7 +62,7 @@ ui <- bootstrapPage(
     div(
       class = "row justify-content-center",
       div(
-        class = "col-8 col-md-4 bg-light py-3 px-5 bordered rounded shadow",
+        class = "col-10 col-md-9 col-lg-6 bg-light py-3 px-5 bordered rounded shadow",
         
         # Connection options
         div(id = "connectionDiv",
@@ -134,30 +114,14 @@ ui <- bootstrapPage(
               )
               
             ),
-        ),
-        
-        # Upload CSV
-        div(id = "uploadDiv",
-            style = "display: none;",
-            
-            # Header
-            tags$h3(class = "text-center", "Upload a CSV"),
             
             # File upload to database
-            fileInput("newTableUpload", "", accept = ".csv", width = "100%"),
-        ),
-        
-        # Write Query
-        div(id = "queryDiv",
-            style = "display: none;",
-            
-            # Header
-            tags$h3(class = "text-center", "Query"),
+            fileInput("newTableUpload", "Upload CSV", accept = ".csv", width = "100%"),
             
             # Send query to database
-            textAreaInput("query", "", width = "100%", height = "300px"),
+            textAreaInput("query", "Query", width = "100%", height = "250px"),
             tags$button(id = "submitQuery", class = "btn btn-outline-success", "Submit Query")
-        )
+        ),
       ),
     )
   )
@@ -191,8 +155,6 @@ server <- function(input, output, session) {
   onclick("viewNav", {
     if(connectionStatus){
       hideElement("connectionDiv")
-      hideElement("uploadDiv")
-      hideElement("queryDiv")
       showElement("viewDiv")
     } else {
       showNotification("Please connect to a database first")
@@ -201,33 +163,7 @@ server <- function(input, output, session) {
   
   onclick("connectionNav", {
     showElement("connectionDiv")
-    hideElement("uploadDiv")
-    hideElement("queryDiv")
     hideElement("viewDiv")
-  })
-  
-  onclick("queryNav", {
-    if(connectionStatus){
-      hideElement("connectionDiv")
-      hideElement("uploadDiv")
-      showElement("queryDiv")
-      hideElement("viewDiv")
-    } else {
-      showNotification("Please connect to a database first")
-    }
-    
-  })
-  
-  onclick("uploadNav", {
-    if (connectionStatus){
-      hideElement("connectionDiv")
-      showElement("uploadDiv")
-      hideElement("queryDiv")
-      hideElement("viewDiv")
-    } else {
-      showNotification("Please connect to a database first")
-    }
-    
   })
   
   ###################################################
