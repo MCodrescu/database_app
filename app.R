@@ -394,6 +394,68 @@ server <- function(input, output, session) {
     
   })
   
+  #########################################################
+  
+  # Allow submitting queries
+  onclick("submitQuery", {
+    
+    # Get the query
+    query <- input$query
+    
+    # Check if it is a select statement
+    if (grepl("SELECT|Select|select", query)){
+      
+      # Add Limit if needed
+      if (!grepl("LIMIT|Limit|limit", query)){
+        query <-  glue("{query} LIMIT 100")
+      }
+      
+      result <- tryCatch({
+        dbGetQuery(pg_con, query)
+      },
+      error = function(error) {
+        result <- data.frame(result = error$message)
+      })
+      
+    } else {
+      result <- tryCatch({
+        dbSendQuery(pg_con, query)
+        result <- data.frame(result = "Success")
+      },
+      error = function(error) {
+        print(error$message)
+        result <- data.frame(result = error$message)
+      })
+    }
+    
+    
+    # Show query result
+    showModal(
+      modalDialog(
+        easyClose = TRUE,
+        size = "xl",
+        h3("Query Preview"),
+        div(
+          class = "table-responsive",
+          style = "max-height: 70vh;",
+          renderDataTable(
+            options = list(dom = 't', paging = FALSE),
+            server = TRUE,
+            rownames = FALSE,
+            {
+              result
+            }
+          )
+        )
+      )
+    )
+    
+    # Update the select input
+    updateSelectInput(inputId = "tables", choices = get_tables("public"))
+  })
+  
+  ########################################################
+  
   
   # Disconnect from DB
   onStop(function(){
