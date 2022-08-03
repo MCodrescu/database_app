@@ -322,6 +322,9 @@ server <- function(input, output, session) {
   
   ###########################################
   
+  # Increase file upload limit
+  options(shiny.maxRequestSize=2000*1024^2)
+  
   # Upload file to DB
   observeEvent(input$newTableUpload, {
     # Read csv
