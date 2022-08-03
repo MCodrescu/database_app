@@ -402,6 +402,9 @@ server <- function(input, output, session) {
     # Get the query
     query <- input$query
     
+    # Initialize number of rows
+    n_rows <- 0
+    
     # Check if it is a select statement
     if (grepl("SELECT|Select|select", query)){
       
@@ -414,6 +417,7 @@ server <- function(input, output, session) {
         # Get the number of rows
         dbSendQuery(pg_con, glue("CREATE TEMP VIEW temp_view_1234 AS ({input$query})"))
         n_rows <- dbGetQuery(pg_con, "SELECT COUNT(*) FROM temp_view_1234")$count
+        dbSendQuery(pg_con, "DROP VIEW temp_view_1234")
         
         # Get the result
         dbGetQuery(pg_con, query)
@@ -428,11 +432,9 @@ server <- function(input, output, session) {
         result <- data.frame(result = "Success")
       },
       error = function(error) {
-        print(error$message)
         result <- data.frame(result = error$message)
       })
     }
-    
     
     # Show query result
     showModal(
@@ -454,23 +456,25 @@ server <- function(input, output, session) {
           )
         ),
         footer = tagList(
-          tags$button(class = "btn btn-outline-secondary", id = "downloadQuery", "Download")
+          tags$button(class = "btn btn-outline-secondary", id = "downloadQuery", style = "display: none;", "Download")
         )
       )
     )
     
+    # Don't allow downloading if query result too big
+    if(n_rows < 50000 & n_rows != 0){showElement("downloadQuery")}
+    
     # Download the query result
     onclick("downloadQuery", {
-      tryCatch({
-        if (n_rows < 50000){
-          write_csv(dbGetQuery(pg_con, input$query))
-        } else {
-          showNotification("Result is more than 50,000 rows. Download not permitted.")
-        }
-        
+      result <- tryCatch({
+        hideElement("downloadQuery")
+        write_csv(dbGetQuery(pg_con, input$query), glue("{Sys.getenv(\"USERPROFILE\")}\\Downloads\\query_result_{format(Sys.time(), \"%Y-%m-%d-%H%M%S\")}.csv"))
+        result <- "Success"
       }, error = function(error){
-        showNotification(error$message)
+        result <- error$message
       })
+      
+      showNotification(result)
     })
     
     # Update the select input
