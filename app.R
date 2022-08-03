@@ -542,8 +542,9 @@ server <- function(input, output, session) {
   
   
   # Disconnect from DB
-  onStop(function(){
+  onSessionEnded(function(){
     dbDisconnect(pg_con)
+    stopApp()
   })
   
   
