@@ -295,7 +295,7 @@ server <- function(input, output, session) {
       showNotification(result)
       
       # Update select input
-      updateSelectInput(inputId = "tables", choices = get_tables("public"))
+      updateSelectInput(inputId = "tables", choices = get_tables(input$schema))
     })
   })
   
@@ -308,24 +308,40 @@ server <- function(input, output, session) {
     req(file)
     new_table <- read_csv(file$datapath, show_col_types = FALSE)
     
-    # Write data frame to DB
-    result <- tryCatch({
-      dbWriteTable(pg_con,
-                   name = gsub(".csv", "", file$name),
-                   value = data.frame(new_table)
+    showModal(
+      modalDialog(
+        easyClose = TRUE,
+        size = "s",
+        textInput("newTableName", "Confirm Table Name", value = gsub(".csv", "", file$name)),
+        footer = tagList(
+          tags$button(id = "confirmNewTableName", class = "btn btn-outline-primary","data-bs-dismiss" = "modal", "Confirm")
+        )
       )
-      result <- "Success"
-    },
-    error = function(error) {
-      result <- error$message
-    }
     )
     
-    # Show result
-    showNotification(result, duration = 3)
+    onclick("confirmNewTableName", {
+      # Write data frame to DB
+      result <- tryCatch({
+        dbWriteTable(pg_con,
+                     name = Id(table = input$newTableName, schema = input$schema),
+                     value = data.frame(new_table),
+                     overwrite = TRUE
+        )
+        result <- "Success"
+      },
+      error = function(error) {
+        result <- error$message
+      }
+      )
+      
+      # Show result
+      showNotification(result, duration = 3)
+      
+      # Update select input
+      updateSelectInput(inputId = "tables", choices = get_tables(input$schema), selected = input$newTableName)
+    })
     
-    # Update select input
-    updateSelectInput(inputId = "tables", choices = get_tables("public"))
+    
   })
   
   ###########################################
@@ -485,7 +501,7 @@ server <- function(input, output, session) {
     })
     
     # Update the select input
-    updateSelectInput(inputId = "tables", choices = get_tables("public"))
+    updateSelectInput(inputId = "tables", choices = get_tables(input$schema))
   })
   
   ########################################################
