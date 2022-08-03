@@ -143,9 +143,9 @@ server <- function(input, output, session) {
   } else {
     dir.create(dbc_path)
     file.create(glue("{dbc_path}\\database_credentials.csv"))
-    initial_credentials <- as.data.frame(matrix(nrow = 1, ncol = 6))
-    colnames(initial_credentials) <- c("connection", "host","username", "password", "port", "database")
-    write_csv(initial_credentials, glue("{dbc_path}\\database_credentials.csv"))
+    connections <- as.data.frame(matrix(nrow = 1, ncol = 6))
+    colnames(connections) <- c("connection", "host","username", "password", "port", "database")
+    write_csv(connections, glue("{dbc_path}\\database_credentials.csv"))
   }
   
   
