@@ -239,12 +239,19 @@ server <- function(input, output, session) {
     
   # View tables on click view button
   onclick("viewTable", {
+    
+    # Get the number of rows
+    dbSendQuery(pg_con, glue("CREATE TEMP VIEW temp_view_1234 AS (SELECT * FROM \"{input$schema}\".\"{input$tables}\")"))
+    n_rows <- dbGetQuery(pg_con, "SELECT COUNT(*) FROM temp_view_1234")$count
+    dbSendQuery(pg_con, "DROP VIEW temp_view_1234")
+    
     # Show the modal
     showModal(
       modalDialog(
         easyClose = TRUE,
         size = "xl",
         h3(glue("Preview {input$tables} in {input$schema}")),
+        p(glue("{n_rows} rows")),
         div(
           class = "table-responsive",
           style = "max-height: 70vh;",
@@ -442,7 +449,7 @@ server <- function(input, output, session) {
         easyClose = TRUE,
         size = "xl",
         h3("Query Preview"),
-        p(glue("Result: {n_rows} rows")),
+        p(glue("{n_rows} rows")),
         div(
           class = "table-responsive",
           style = "max-height: 70vh;",
