@@ -5,6 +5,8 @@ library(RPostgres)
 library(dplyr)
 library(glue)
 library(DT)
+library(teradatasql)
+library(stringr)
 
 ui <- bootstrapPage(
   theme = bslib::bs_theme(version = 5),
@@ -89,10 +91,10 @@ ui <- bootstrapPage(
             tags$h3(class = "text-center", "View Tables"),
             
             # Select schema
-            selectInput("schema", "Schema", choices = NULL, width = "100%"),
+            selectizeInput("schema", "Schema", choices = "Loading...", width = "100%"),
             
             # Select table
-            selectInput("tables", "Table", choices = NULL, width = "100%"),
+            selectizeInput("tables", "Table", choices = "Loading...", width = "100%"),
             div(
               class = "row justify-content-between py-3",
               
@@ -137,14 +139,14 @@ server <- function(input, output, session) {
   connectionStatus <- FALSE
   
   # Create a place to store DB credentials
-  dbc_path <- glue("{Sys.getenv(\"USERPROFILE\")}\\AppData\\Local\\Programs\\Globys_App\\")
+  dbc_path <- glue("{Sys.getenv(\"USERPROFILE\")}\\AppData\\Local\\Programs\\Database_App\\")
   if(file.exists(glue("{dbc_path}\\database_credentials.csv"))){
     connections <- read_csv(glue("{dbc_path}\\database_credentials.csv"))
   } else {
     dir.create(dbc_path)
     file.create(glue("{dbc_path}\\database_credentials.csv"))
-    connections <- as.data.frame(matrix(nrow = 1, ncol = 6))
-    colnames(connections) <- c("connection", "host","username", "password", "port", "database")
+    connections <- as.data.frame(matrix(nrow = 1, ncol = 7))
+    colnames(connections) <- c("name", "host","username", "password", "port", "database", "driver")
     write_csv(connections, glue("{dbc_path}\\database_credentials.csv"))
   }
   
@@ -169,12 +171,12 @@ server <- function(input, output, session) {
   ###################################################
   
   # Update the connection select
-  updateSelectInput(inputId = "connectionSelect", choices = connections$connection)
+  updateSelectInput(inputId = "connectionSelect", choices = connections$name)
   
   # Connect to DB
   onclick("connectButton", {
-   read_csv(glue("{dbc_path}\\database_credentials.csv")) %>%
-      filter(connection == input$connectionSelect) ->
+    read_csv(glue("{dbc_path}\\database_credentials.csv")) %>%
+      filter(name == input$connectionSelect) ->
       database_credentials
     
     # Get user credentials
@@ -183,17 +185,33 @@ server <- function(input, output, session) {
     password <- database_credentials$password
     port <- database_credentials$port
     database <- database_credentials$database
+    driver <- database_credentials$driver
     
     # Try connecting to DB
     result <- tryCatch({
-      pg_con <- dbConnect(Postgres(),
-                          host = host,
-                          user = username,
-                          password = password,
-                          port = port,
-                          dbname = database
-      )
-      result <- "Success"
+      # Postgres driver
+      if (driver == "postgres"){
+        con <- dbConnect(Postgres(),
+                         host = host,
+                         user = username,
+                         password = password,
+                         port = port,
+                         dbname = database
+        )
+        result <- "Success"
+      } 
+      
+      # Teradata driver
+      if (driver == "teradata"){
+        con <- dbConnect(TeradataDriver(),
+                         host = host,
+                         user = username,
+                         password = password
+        )
+        result <- "Success"
+      } else{
+        showNotification("Driver must be one of: postgres, teradata")
+      }
     },
     error = function(error) {
       result <- error$message
@@ -204,46 +222,79 @@ server <- function(input, output, session) {
     
     if(result == "Success"){
       connectionStatus <- TRUE
-      html("connectionStatus", glue("Connected to: {database_credentials$connection}"))
+      html("connectionStatus", glue("Connected to: {database_credentials$name}"))
       hideElement("connectionDiv")
       showElement("viewDiv")
     }
     
-    # Update table select
-    schema <- dbGetQuery(pg_con, "SELECT table_schema FROM information_schema.tables") %>%
-      distinct(table_schema) %>%
-      arrange(table_schema)
+    # List all schemas
+    schemas <- 
+      str_remove_all(
+        str_split(
+          sapply(
+            dbListObjects(con)$table,
+            dbQuoteIdentifier,
+            conn = con),
+          " "
+        ),
+        "\""
+      )
     
-    updateSelectInput(session, "schema", choices = schema, selected = "public")
+    # Update schema list
+    updateSelectizeInput(
+      session,
+      "schema",
+      choices = schemas,
+      selected = schemas[1],
+      server = TRUE
+    )
     
     # Set initial table options
     get_tables <- function(schema){
-      query <- glue("SELECT table_name FROM information_schema.tables WHERE table_schema = '{schema}'")
-      dbGetQuery(pg_con, query) %>%
-        distinct(table_name) %>%
-        arrange(table_name) %>%
-        pull(table_name)
+      tables <- 
+        str_remove_all(
+          sapply(
+            dbListObjects(con, schema)$table,
+            dbQuoteIdentifier,
+            conn = con),
+          glue("\"|{schema}|\\.")
+        )
     }
     
-    updateSelectInput(session, "tables", choices = get_tables("public"))
+    # Set initial tables
+    current_tables <- get_tables(schemas[1])
+    updateSelectizeInput(
+      session,
+      "tables",
+      choices = current_tables,
+      selected = current_tables[1],
+      server = TRUE
+    )
     
     # Update table select on schema change
     onevent("change", "schema", {
-      updateSelectInput(session, "tables", choices = get_tables(input$schema))
+      current_tables <- get_tables(input$schema)
+      updateSelectizeInput(
+        session,
+        "tables",
+        choices = current_tables,
+        selected = current_tables[1],
+        server = TRUE
+      )
     })
     
   })
-
-    
-   ######################################################
-    
+  
+  
+  ######################################################
+  
   # View tables on click view button
   onclick("viewTable", {
     
     # Get the number of rows
-    dbSendQuery(pg_con, glue("CREATE TEMP VIEW temp_view_1234 AS (SELECT * FROM \"{input$schema}\".\"{input$tables}\")"))
-    n_rows <- dbGetQuery(pg_con, "SELECT COUNT(*) FROM temp_view_1234")$count
-    dbSendQuery(pg_con, "DROP VIEW temp_view_1234")
+    dbSendQuery(con, glue("CREATE TEMP VIEW temp_view_1234 AS (SELECT * FROM \"{input$schema}\".\"{input$tables}\")"))
+    n_rows <- dbGetQuery(con, "SELECT COUNT(*) FROM temp_view_1234")$count
+    dbSendQuery(con, "DROP VIEW temp_view_1234")
     
     # Show the modal
     showModal(
@@ -260,7 +311,7 @@ server <- function(input, output, session) {
             server = TRUE,
             rownames = FALSE,
             {
-              dbGetQuery(pg_con, glue("SELECT * FROM \"{input$schema}\".\"{input$tables}\" ORDER BY RANDOM() LIMIT 100"))
+              dbGetQuery(con, glue("SELECT * FROM \"{input$schema}\".\"{input$tables}\" ORDER BY RANDOM() LIMIT 100"))
             }
           )
         ),
@@ -279,7 +330,7 @@ server <- function(input, output, session) {
       result <- tryCatch({
         
         # Get query and write to csv
-        write_csv(dbGetQuery(pg_con, glue("SELECT * FROM \"{input$schema}\".\"{input$tables}\" ")), glue("{Sys.getenv(\"USERPROFILE\")}\\Downloads\\query_result_{format(Sys.time(), \"%Y-%m-%d-%H%M%S\")}.csv"))
+        write_csv(dbGetQuery(con, glue("SELECT * FROM \"{input$schema}\".\"{input$tables}\" ")), glue("{Sys.getenv(\"USERPROFILE\")}\\Downloads\\query_result_{format(Sys.time(), \"%Y-%m-%d-%H%M%S\")}.csv"))
         result <- glue("Downloaded Successfully to {Sys.getenv(\"USERPROFILE\")}\\Downloads")
         
       }, error = function(error){
@@ -306,7 +357,7 @@ server <- function(input, output, session) {
       removeModal()
       
       result <- tryCatch({
-        dbSendQuery(pg_con, glue("DROP TABLE \"{input$schema}\".\"{table}\""))
+        dbSendQuery(con, glue("DROP TABLE \"{input$schema}\".\"{table}\""))
         result <- "Success"
       }, error = function(error){
         result <- error$message
@@ -346,7 +397,7 @@ server <- function(input, output, session) {
     onclick("confirmNewTableName", {
       # Write data frame to DB
       result <- tryCatch({
-        dbWriteTable(pg_con,
+        dbWriteTable(con,
                      name = Id(table = input$newTableName, schema = input$schema),
                      value = data.frame(new_table),
                      overwrite = TRUE
@@ -407,12 +458,12 @@ server <- function(input, output, session) {
     
     # # Save changes to csv file
     observeEvent(input$dbConnectionsTable_cell_edit, {
-     connections <<- editData(connections, input$dbConnectionsTable_cell_edit, proxy)
+      connections <<- editData(connections, input$dbConnectionsTable_cell_edit, proxy)
     })
     
     # Add new row button
     onclick("addNewConnection", {
-      connections[nrow(connections) + 1, ] <- data.frame(matrix(nrow = 1, ncol = 6))
+      connections[nrow(connections) + 1, ] <- data.frame(matrix(nrow = 1, ncol = 7))
       replaceData(proxy, connections)
     })
     
@@ -434,7 +485,7 @@ server <- function(input, output, session) {
       file.remove(glue("{dbc_path}\\database_credentials.csv"))
       write_csv(connections, glue("{dbc_path}\\database_credentials.csv"))
       
-      updateSelectInput(inputId = "connectionSelect", choices = connections$connection)
+      updateSelectInput(inputId = "connectionSelect", choices = connections$name)
       output$dbConnectionsTable <- NULL
     })
     
@@ -462,15 +513,15 @@ server <- function(input, output, session) {
       
       result <- tryCatch({
         # Set search path
-        dbSendQuery(pg_con, glue("SET search_path TO public, {input$schema}"))
+        dbSendQuery(con, glue("SET search_path TO public, {input$schema}"))
         
         # Get the number of rows
-        dbSendQuery(pg_con, glue("CREATE TEMP VIEW temp_view_1234 AS ({input$query})"))
-        n_rows <- dbGetQuery(pg_con, "SELECT COUNT(*) FROM temp_view_1234")$count
-        dbSendQuery(pg_con, "DROP VIEW temp_view_1234")
+        dbSendQuery(con, glue("CREATE TEMP VIEW temp_view_1234 AS ({input$query})"))
+        n_rows <- dbGetQuery(con, "SELECT COUNT(*) FROM temp_view_1234")$count
+        dbSendQuery(con, "DROP VIEW temp_view_1234")
         
         # Get the result
-        dbGetQuery(pg_con, query)
+        dbGetQuery(con, query)
       },
       error = function(error) {
         result <- data.frame(result = error$message)
@@ -479,10 +530,10 @@ server <- function(input, output, session) {
     } else {
       result <- tryCatch({
         # Set search path
-        dbSendQuery(pg_con, glue("SET search_path TO public, {input$schema}"))
+        dbSendQuery(con, glue("SET search_path TO public, {input$schema}"))
         
         # Send query
-        dbSendQuery(pg_con, query)
+        dbSendQuery(con, query)
         result <- data.frame(result = "Success")
       },
       error = function(error) {
@@ -524,10 +575,10 @@ server <- function(input, output, session) {
       result <- tryCatch({
         
         # Set search path
-        dbSendQuery(pg_con, glue("SET search_path TO public, {input$schema}"))
+        dbSendQuery(con, glue("SET search_path TO public, {input$schema}"))
         
         # Get query and write to csv
-        write_csv(dbGetQuery(pg_con, input$query), glue("{Sys.getenv(\"USERPROFILE\")}\\Downloads\\query_result_{format(Sys.time(), \"%Y-%m-%d-%H%M%S\")}.csv"))
+        write_csv(dbGetQuery(con, input$query), glue("{Sys.getenv(\"USERPROFILE\")}\\Downloads\\query_result_{format(Sys.time(), \"%Y-%m-%d-%H%M%S\")}.csv"))
         result <- glue("Downloaded Successfully to {Sys.getenv(\"USERPROFILE\")}\\Downloads")
         
       }, error = function(error){
@@ -546,7 +597,7 @@ server <- function(input, output, session) {
   
   # Disconnect from DB
   session$onSessionEnded(function(){
-    try(dbDisconnect(pg_con))
+    try(dbDisconnect(con))
     stopApp()
   })
   
