@@ -65,6 +65,7 @@ ui <- bootstrapPage(
       class = "row justify-content-center",
       div(
         class = "col-10 col-md-9 col-lg-6 bg-light py-3 px-5 bordered rounded shadow",
+        style = "max-height: 90vh;",
         
         # Connection options
         div(id = "connectionDiv",
@@ -121,7 +122,7 @@ ui <- bootstrapPage(
             fileInput("newTableUpload", "Upload CSV", accept = ".csv", width = "100%"),
             
             # Send query to database
-            textAreaInput("query", "Query", width = "100%", height = "250px"),
+            textAreaInput("query", "Query", width = "100%"),
             tags$button(id = "submitQuery", class = "btn btn-outline-success", "Submit Query")
         ),
       ),
@@ -202,7 +203,7 @@ server <- function(input, output, session) {
       } 
       
       # Teradata driver
-      if (driver == "teradata"){
+      else if (driver == "teradata"){
         con <- dbConnect(TeradataDriver(),
                          host = host,
                          user = username,
@@ -216,6 +217,7 @@ server <- function(input, output, session) {
     error = function(error) {
       result <- error$message
     })
+    
     
     # Notify of connection result
     showNotification(result)
@@ -232,12 +234,12 @@ server <- function(input, output, session) {
       str_remove_all(
         str_split(
           sapply(
-            dbListObjects(con)$table,
+            filter(dbListObjects(con), is_prefix)$table,
             dbQuoteIdentifier,
             conn = con),
           " "
         ),
-        "\""
+        "\"|\\."
       )
     
     # Update schema list
@@ -251,14 +253,13 @@ server <- function(input, output, session) {
     
     # Set initial table options
     get_tables <- function(schema){
-      tables <- 
-        str_remove_all(
-          sapply(
-            dbListObjects(con, schema)$table,
-            dbQuoteIdentifier,
-            conn = con),
-          glue("\"|{schema}|\\.")
-        )
+      str_remove_all(
+        sapply(
+          dbListObjects(con, Id(schema = schema))$table,
+          dbQuoteIdentifier,
+          conn = con),
+        glue("\"|{schema}|\\.")
+      )
     }
     
     # Set initial tables
