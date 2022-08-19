@@ -15,7 +15,7 @@ ui <- bootstrapPage(
   #######################################################
   
   # Navbar
-  tags$nav(class = "navbar navbar-expand-lg navbar-light bg-light",
+  tags$nav(class = "navbar navbar-expand-sm navbar-light bg-light",
            div(class = "container-fluid",
                tags$a(class = "navbar-brand",
                       "Database App"),
@@ -28,7 +28,17 @@ ui <- bootstrapPage(
                div(class = "collapse navbar-collapse",
                    id = "navbarSupportedContent",
                    tags$ul(
-                     class = "navbar-nav me-auto mb-2 mb-lg-0",
+                     class = "navbar-nav me-auto mb-2 mb-sm-0",
+                     tags$li(
+                       class = "nav-item",
+                       tags$a(class = "nav-link",
+                              id = "connectionNav",
+                              role = "button",
+                              "data-bs-toggle" = "dropdown",
+                              "Connection"
+                       )
+                       
+                     ),
                      tags$li(
                        class = "nav-item",
                        tags$a(class = "nav-link",
@@ -41,10 +51,10 @@ ui <- bootstrapPage(
                      tags$li(
                        class = "nav-item",
                        tags$a(class = "nav-link",
-                              id = "connectionNav",
+                              id = "queryNav",
                               role = "button",
                               "data-bs-toggle" = "dropdown",
-                              "Connection"
+                              "Query"
                        )
                        
                      ),
@@ -63,65 +73,70 @@ ui <- bootstrapPage(
       class = "row justify-content-center",
       div(
         class = "col-10 col-md-9 col-lg-6 bg-light py-3 px-5 bordered rounded shadow",
+        id = "connectionDiv",
         
-        # Connection options
-        div(id = "connectionDiv",
-            # Header
-            tags$h3(class = "text-center", "Select a Connection"),
+        # Header
+        tags$h3(class = "text-center", "Select a Connection"),
+        
+        # Select a connection
+        selectInput("connectionSelect", "", choices = NULL, width = "100%"),
+        
+        # Connect button
+        tags$button(class = "btn btn-outline-success w-100 mt-2 mb-3", id = "connectButton", "Connect"),
+        
+        # Add connection button
+        tags$button(class = "btn btn-outline-secondary w-100 mt-2 mb-3", id = "manageConnectionsButton", "Manage Connections"),
+        
+        # Connection status
+        p(id = "connectionStatus")
+        
+      ),
+      div(
+        class = "col-10 col-md-9 col-lg-6 bg-light py-3 px-5 bordered rounded shadow",
+        id = "viewDiv",
+        style = "display: none;",
+        
+        # Header
+        tags$h3(class = "text-center", "View Tables"),
+        
+        # Select schema
+        selectInput("schema", "Schema", choices = NULL, width = "100%"),
+        
+        # Select table
+        selectInput("tables", "Table", choices = NULL, width = "100%"),
+        div(
+          class = "row justify-content-between py-3",
+          
+          # View Table
+          div(
+            class = "col-6",
+            tags$button(id = "viewTable",
+                        class = "btn btn-outline-primary w-100",
+                        "View")
             
-            # Select a connection
-            selectInput("connectionSelect", "", choices = NULL, width = "100%"),
-            
-            # Connect button
-            tags$button(class = "btn btn-outline-success w-100 mt-2 mb-3", id = "connectButton", "Connect"),
-            
-            # Add connection button
-            tags$button(class = "btn btn-outline-secondary w-100 mt-2 mb-3", id = "manageConnectionsButton", "Manage Connections"),
-            
-            # Connection status
-            p(id = "connectionStatus")
+          ),
+          
+          # Delete Table
+          div(
+            class = "col-6",
+            tags$button(id = "deleteTable",
+                        class = "btn btn-outline-danger w-100",
+                        "Delete")
+          )
+          
         ),
         
-        # View tables
-        div(id = "viewDiv",
-            style = "display: none;",
-            # Header
-            tags$h3(class = "text-center", "View Tables"),
-            
-            # Select schema
-            selectInput("schema", "Schema", choices = NULL, width = "100%"),
-            
-            # Select table
-            selectInput("tables", "Table", choices = NULL, width = "100%"),
-            div(
-              class = "row justify-content-between py-3",
-              
-              # View Table
-              div(
-                class = "col-6",
-                tags$button(id = "viewTable",
-                            class = "btn btn-outline-primary w-100",
-                            "View")
-                
-              ),
-              
-              # Delete Table
-              div(
-                class = "col-6",
-                tags$button(id = "deleteTable",
-                            class = "btn btn-outline-danger w-100",
-                            "Delete")
-              )
-              
-            ),
-            
-            # File upload to database
-            fileInput("newTableUpload", "Upload CSV", accept = ".csv", width = "100%"),
-            
-            # Send query to database
-            textAreaInput("query", "Query", width = "100%", height = "250px"),
-            tags$button(id = "submitQuery", class = "btn btn-outline-success", "Submit Query")
-        ),
+        # File upload to database
+        fileInput("newTableUpload", "Upload CSV", accept = ".csv", width = "100%"),
+      ),
+      div(
+        class = "col-12 col-md-10 col-lg-8 bg-light py-3 px-5 bordered rounded shadow",
+        id = "queryDiv",
+        style = "display: none; height: 80vh;",
+        
+        # Send query to database
+        textAreaInput("query", "Query", width = "100%", height = "63vh", resize = "none"),
+        tags$button(id = "submitQuery", class = "btn btn-outline-success", "Submit Query")
       ),
     )
   )
@@ -151,20 +166,32 @@ server <- function(input, output, session) {
   
   ###########################################################
   
-  # Switch views
   onclick("viewNav", {
     if(connectionStatus){
       hideElement("connectionDiv")
+      hideElement("queryDiv")
       showElement("viewDiv")
     } else {
       showNotification("Please connect to a database first")
     }
   })
   
-  onclick("connectionNav", {
-    showElement("connectionDiv")
-    hideElement("viewDiv")
+  onclick("queryNav", {
+    if(connectionStatus){
+      hideElement("connectionDiv")
+      hideElement("viewDiv")
+      showElement("queryDiv")
+    } else {
+      showNotification("Please connect to a database first")
+    }
   })
+  
+  onclick("connectionNav", {
+    hideElement("viewDiv")
+    hideElement("queryDiv")
+    showElement("connectionDiv")
+  })
+  
   
   ###################################################
   
