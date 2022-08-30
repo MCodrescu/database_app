@@ -5,6 +5,7 @@ library(RPostgres)
 library(dplyr)
 library(glue)
 library(DT)
+library(janitor)
 
 ui <- bootstrapPage(
   theme = bslib::bs_theme(version = 5),
@@ -363,7 +364,10 @@ server <- function(input, output, session) {
       modalDialog(
         easyClose = TRUE,
         size = "s",
-        textInput("newTableName", "Confirm Table Name", value = gsub(".csv", "", file$name)),
+        tagList(
+          textInput("newTableName", "Confirm Table Name", value = gsub(".csv", "", file$name)),
+          selectInput("cleanColumnNames", "Clean column names?", choices = c("Yes", "No"), selected = "Yes")
+        ),
         footer = tagList(
           tags$button(id = "confirmNewTableName", class = "btn btn-outline-primary","data-bs-dismiss" = "modal", "Confirm")
         )
@@ -371,6 +375,11 @@ server <- function(input, output, session) {
     )
     
     onclick("confirmNewTableName", {
+      
+      if(input$cleanColumnNames == "Yes"){
+        new_table <- clean_names(new_table)
+      }
+      
       # Write data frame to DB
       result <- tryCatch({
         dbWriteTable(pg_con,
