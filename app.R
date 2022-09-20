@@ -142,7 +142,7 @@ ui <- bootstrapPage(
         aceEditor(
           "query",
           mode = "pgsql",
-          height = "70vh",
+          height = "90%",
           value = "",
           showPrintMargin = FALSE,
           fontSize = 14,
