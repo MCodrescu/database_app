@@ -6,6 +6,7 @@ library(dplyr)
 library(glue)
 library(DT)
 library(janitor)
+library(shinyAce)
 
 ui <- bootstrapPage(
   theme = bslib::bs_theme(version = 5),
@@ -16,53 +17,55 @@ ui <- bootstrapPage(
   #######################################################
   
   # Navbar
-  tags$nav(class = "navbar navbar-expand-sm navbar-light bg-light",
-           div(class = "container-fluid",
-               tags$a(class = "navbar-brand",
-                      "Database App"),
-               tags$button(class = "navbar-toggler",
-                           type = "button",
-                           "data-bs-toggle" = "collapse",
-                           "data-bs-target" = "#navbarSupportedContent",
-                           tags$span(class = "navbar-toggler-icon")
-               ),
-               div(class = "collapse navbar-collapse",
-                   id = "navbarSupportedContent",
-                   tags$ul(
-                     class = "navbar-nav me-auto mb-2 mb-sm-0",
-                     tags$li(
-                       class = "nav-item",
-                       tags$a(class = "nav-link",
-                              id = "connectionNav",
-                              role = "button",
-                              "data-bs-toggle" = "dropdown",
-                              "Connection"
-                       )
-                       
-                     ),
-                     tags$li(
-                       class = "nav-item",
-                       tags$a(class = "nav-link",
-                              id = "viewNav",
-                              role = "button",
-                              "data-bs-toggle" = "dropdown",
-                              "View"
+  tags$div(class = "container-fluid pt-2",
+    tags$nav(class = "navbar navbar-expand-sm navbar-light bg-light border rounded shadow-sm",
+             div(class = "container-fluid",
+                 tags$a(class = "navbar-brand",
+                        "Database App"),
+                 tags$button(class = "navbar-toggler",
+                             type = "button",
+                             "data-bs-toggle" = "collapse",
+                             "data-bs-target" = "#navbarSupportedContent",
+                             tags$span(class = "navbar-toggler-icon")
+                 ),
+                 div(class = "collapse navbar-collapse",
+                     id = "navbarSupportedContent",
+                     tags$ul(
+                       class = "navbar-nav me-auto mb-2 mb-sm-0",
+                       tags$li(
+                         class = "nav-item",
+                         tags$a(class = "nav-link",
+                                id = "connectionNav",
+                                role = "button",
+                                "data-bs-toggle" = "dropdown",
+                                "Connection"
+                         )
+                         
                        ),
-                     ),
-                     tags$li(
-                       class = "nav-item",
-                       tags$a(class = "nav-link",
-                              id = "queryNav",
-                              role = "button",
-                              "data-bs-toggle" = "dropdown",
-                              "Query"
-                       )
+                       tags$li(
+                         class = "nav-item",
+                         tags$a(class = "nav-link",
+                                id = "viewNav",
+                                role = "button",
+                                "data-bs-toggle" = "dropdown",
+                                "View"
+                         ),
+                       ),
+                       tags$li(
+                         class = "nav-item",
+                         tags$a(class = "nav-link",
+                                id = "queryNav",
+                                role = "button",
+                                "data-bs-toggle" = "dropdown",
+                                "Query"
+                         )
+                         
+                       ),
                        
-                     ),
-                     
-                   )
-               )
-           )
+                     )
+                 )
+             )
+    )
   ),
   
   #########################################################
@@ -73,7 +76,7 @@ ui <- bootstrapPage(
     div(
       class = "row justify-content-center",
       div(
-        class = "col-10 col-md-9 col-lg-6 bg-light py-3 px-5 bordered rounded shadow",
+        class = "col-10 col-md-9 col-lg-6 bg-light py-3 px-5 border rounded shadow",
         id = "connectionDiv",
         
         # Header
@@ -93,7 +96,7 @@ ui <- bootstrapPage(
         
       ),
       div(
-        class = "col-10 col-md-9 col-lg-6 bg-light py-3 px-5 bordered rounded shadow",
+        class = "col-10 col-md-9 col-lg-6 bg-light py-3 px-5 border rounded shadow",
         id = "viewDiv",
         style = "display: none;",
         
@@ -131,12 +134,20 @@ ui <- bootstrapPage(
         fileInput("newTableUpload", "Upload CSV", accept = ".csv", width = "100%"),
       ),
       div(
-        class = "col-12 col-md-10 col-lg-8 bg-light py-3 px-5 bordered rounded shadow",
+        class = "col-12 col-md-10 col-lg-8 bg-light p-3 border rounded shadow",
         id = "queryDiv",
         style = "display: none; height: 80vh;",
         
         # Send query to database
-        textAreaInput("query", "Query", width = "100%", height = "63vh", resize = "none"),
+        aceEditor(
+          "query",
+          mode = "pgsql",
+          height = "70vh",
+          value = "",
+          showPrintMargin = FALSE,
+          fontSize = 14,
+          highlightActiveLine = FALSE),
+        
         tags$button(id = "submitQuery", class = "btn btn-outline-success", "Submit Query")
       ),
     )
