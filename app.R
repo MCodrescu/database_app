@@ -134,7 +134,7 @@ ui <- bootstrapPage(
         fileInput("newTableUpload", "Upload CSV", accept = ".csv", width = "100%"),
       ),
       div(
-        class = "col-12 col-md-10 col-lg-8 bg-light p-3 border rounded shadow",
+        class = "col-10 col-lg-8 bg-light p-3 border rounded shadow",
         id = "queryDiv",
         style = "display: none; height: 80vh;",
         
