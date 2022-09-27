@@ -148,7 +148,8 @@ ui <- bootstrapPage(
           fontSize = 14,
           highlightActiveLine = FALSE),
         
-        tags$button(id = "submitQuery", class = "btn btn-outline-success", "Submit Query")
+        tags$button(id = "submitQuery", class = "btn btn-outline-success", "Submit Query"),
+        tags$button(id = "formatQuery", class = "btn btn-outline-dark", "Format"),
       ),
     )
   )
@@ -593,6 +594,32 @@ server <- function(input, output, session) {
   })
   
   ########################################################
+  
+  # Reformat SQL code
+  onclick("formatQuery", {
+    original_query <- input$query
+    if(require(httr)){
+      tryCatch({
+        response <-
+          GET(
+            glue(
+              "https://sqlformat.org/api/v1/format?reindent=1&keyword_case=upper&sql={URLencode(original_query)}"
+            ),
+          )
+        updateAceEditor(
+          session = session,
+          editorId = "query",
+          value = content(response, as = "parsed")$result)
+      }, error = function(error){
+        showNotification(error$message)
+      })
+      
+    } else{
+      showNotification("You must have httr package installed to format.")
+    }
+  })
+  
+  #######################################################
   
   
   # Disconnect from DB
