@@ -606,6 +606,9 @@ server <- function(input, output, session) {
             glue(
               "https://sqlformat.org/api/v1/format?reindent=1&keyword_case=upper&sql={URLencode(original_query)}"
             ),
+            use_proxy(
+              Sys.getenv("https_proxy")
+            )
           )
         updateAceEditor(
           session = session,
