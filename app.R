@@ -280,9 +280,11 @@ server <- function(input, output, session) {
   onclick("viewTable", {
     
     # Get the number of rows
-    dbSendQuery(pg_con, glue("CREATE TEMP VIEW temp_view_1234 AS (SELECT * FROM \"{input$schema}\".\"{input$tables}\")"))
-    n_rows <- dbGetQuery(pg_con, "SELECT COUNT(*) FROM temp_view_1234")$count
-    dbSendQuery(pg_con, "DROP VIEW temp_view_1234")
+    n_rows <- 
+      dbGetQuery(
+        pg_con,
+        glue("WITH cte1 AS (SELECT * FROM \"{input$schema}\".\"{input$tables}\") SELECT COUNT(*) FROM cte1")
+      )$count
     
     # Show the modal
     showModal(
@@ -512,9 +514,11 @@ server <- function(input, output, session) {
         dbSendQuery(pg_con, glue("SET search_path TO public, {input$schema}"))
         
         # Get the number of rows
-        dbSendQuery(pg_con, glue("CREATE TEMP VIEW temp_view_1234 AS ({input$query})"))
-        n_rows <- dbGetQuery(pg_con, "SELECT COUNT(*) FROM temp_view_1234")$count
-        dbSendQuery(pg_con, "DROP VIEW temp_view_1234")
+        n_rows <- 
+          dbGetQuery(
+            pg_con,
+            glue("WITH cte1 AS ({input$query}) SELECT COUNT(*) FROM cte1")
+          )$count
         
         # Get the result
         dbGetQuery(pg_con, query)
