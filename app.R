@@ -142,15 +142,16 @@ ui <- bootstrapPage(
         aceEditor(
           "query",
           mode = "pgsql",
-          height = "90%",
+          height = "92%",
           value = "",
           showPrintMargin = FALSE,
-          fontSize = 14,
+          fontSize = 16,
           highlightActiveLine = FALSE),
         
-        tags$button(id = "submitQuery", class = "btn btn-outline-success", "Submit Query"),
-        tags$button(id = "formatQuery", class = "btn btn-outline-dark", "Format"),
+        tags$button(id = "submitQuery", class = "btn btn-md btn-outline-success", "Submit Query"),
+        tags$button(id = "formatQuery", class = "btn btn-md btn-outline-dark", "Format"),
       ),
+      
     )
   )
 )
