@@ -7,6 +7,7 @@ library(glue)
 library(DT)
 library(janitor)
 library(shinyAce)
+library(stringr)
 
 ui <- bootstrapPage(
   theme = bslib::bs_theme(version = 5),
@@ -168,12 +169,12 @@ server <- function(input, output, session) {
   # Create a place to store DB credentials
   dbc_path <- glue("{Sys.getenv(\"USERPROFILE\")}\\AppData\\Local\\Programs\\Globys_App\\")
   if(file.exists(glue("{dbc_path}\\database_credentials.csv"))){
-    connections <- read_csv(glue("{dbc_path}\\database_credentials.csv"))
+      connections <- read_csv(glue("{dbc_path}\\database_credentials.csv"))
   } else {
     dir.create(dbc_path)
     file.create(glue("{dbc_path}\\database_credentials.csv"))
-    connections <- as.data.frame(matrix(nrow = 1, ncol = 6))
-    colnames(connections) <- c("connection", "host","username", "password", "port", "database")
+    connections <- as.data.frame(matrix(nrow = 1, ncol = 7))
+    colnames(connections) <- c("connection", "host","username", "password", "port", "database", "driver")
     write_csv(connections, glue("{dbc_path}\\database_credentials.csv"))
   }
   
@@ -214,9 +215,20 @@ server <- function(input, output, session) {
   
   # Connect to DB
   onclick("connectButton", {
-   read_csv(glue("{dbc_path}\\database_credentials.csv")) %>%
-      filter(connection == input$connectionSelect) ->
-      database_credentials
+    
+    connections <- read_csv(glue("{dbc_path}\\database_credentials.csv"))
+    
+    # Here for legacy reasons
+    if(ncol(connections) == 6){
+      connections <-
+        connections |>
+        mutate(driver = NA)
+    }
+      
+    database_credentials <-
+      connections |>
+      filter(connection == input$connectionSelect)
+    
     
     # Get user credentials
     host <- database_credentials$host
@@ -224,17 +236,32 @@ server <- function(input, output, session) {
     password <- database_credentials$password
     port <- database_credentials$port
     database <- database_credentials$database
+    driver <- database_credentials$driver
     
     # Try connecting to DB
     result <- tryCatch({
-      pg_con <- dbConnect(Postgres(),
-                          host = host,
-                          user = username,
-                          password = password,
-                          port = port,
-                          dbname = database
-      )
-      result <- "Success"
+      if(identical(driver,"postgres")){
+        con <- dbConnect(Postgres(),
+                            host = host,
+                            user = username,
+                            password = password,
+                            port = port,
+                            dbname = database
+        )
+        result <- "Success"
+        
+      } else if (identical(driver, "odbc")){
+        con <- DBI::dbConnect(
+          odbc::odbc(),
+          dsn = database_credentials$connection
+        )
+        result <- "Success"
+        
+      } else {
+        result <- "Driver must be one of: postgres, odbc"
+      }
+      
+      
     },
     error = function(error) {
       result <- error$message
@@ -248,30 +275,65 @@ server <- function(input, output, session) {
       html("connectionStatus", glue("Connected to: {database_credentials$connection}"))
       hideElement("connectionDiv")
       showElement("viewDiv")
+      
+      # List all schemas
+      schemas <- 
+        str_remove_all(
+          str_split(
+            sapply(
+              filter(dbListObjects(con), is_prefix)$table,
+              dbQuoteIdentifier,
+              conn = con),
+            " "
+          ),
+          "\"|\\."
+        )
+      
+      
+      # Update schema list
+      updateSelectizeInput(
+        session,
+        "schema",
+        choices = schemas,
+        selected = schemas[1],
+        server = TRUE
+      )
+      
+      # Set initial table options
+      get_tables <- function(schema){
+        str_remove_all(
+          sapply(
+            dbListObjects(con, Id(schema = schema))$table,
+            dbQuoteIdentifier,
+            conn = con),
+          glue("\"|{schema}|\\.")
+        )
+      }
+      
+      # Set initial tables
+      current_tables <- get_tables(schemas[1])
+      updateSelectizeInput(
+        session,
+        "tables",
+        choices = current_tables,
+        selected = current_tables[1],
+        server = TRUE
+      )
+      
+      # Update table select on schema change
+      onevent("change", "schema", {
+        current_tables <- get_tables(input$schema)
+        updateSelectizeInput(
+          session,
+          "tables",
+          choices = current_tables,
+          selected = current_tables[1],
+          server = TRUE
+        )
+      })
     }
     
-    # Update table select
-    schema <- dbGetQuery(pg_con, "SELECT table_schema FROM information_schema.tables") %>%
-      distinct(table_schema) %>%
-      arrange(table_schema)
     
-    updateSelectInput(session, "schema", choices = schema, selected = "public")
-    
-    # Set initial table options
-    get_tables <- function(schema){
-      query <- glue("SELECT table_name FROM information_schema.tables WHERE table_schema = '{schema}'")
-      dbGetQuery(pg_con, query) %>%
-        distinct(table_name) %>%
-        arrange(table_name) %>%
-        pull(table_name)
-    }
-    
-    updateSelectInput(session, "tables", choices = get_tables("public"))
-    
-    # Update table select on schema change
-    onevent("change", "schema", {
-      updateSelectInput(session, "tables", choices = get_tables(input$schema))
-    })
     
   })
 
@@ -427,6 +489,13 @@ server <- function(input, output, session) {
     # Get most updated connections file
     connections <- read_csv(glue("{dbc_path}\\database_credentials.csv"), show_col_types = FALSE)
     
+    # Here for legacy reasons
+    if(ncol(connections) == 6){
+      connections <-
+        connections |>
+        mutate(driver = NA)
+    }
+    
     # Set table proxy
     proxy = dataTableProxy('dbConnectionsTable')
     
@@ -463,7 +532,7 @@ server <- function(input, output, session) {
     
     # Add new row button
     onclick("addNewConnection", {
-      connections[nrow(connections) + 1, ] <- data.frame(matrix(nrow = 1, ncol = 6))
+      connections[nrow(connections) + 1, ] <- data.frame(matrix(nrow = 1, ncol = 7))
       replaceData(proxy, connections)
     })
     
