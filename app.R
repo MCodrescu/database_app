@@ -142,14 +142,16 @@ ui <- bootstrapPage(
         aceEditor(
           "query",
           mode = "pgsql",
-          height = "90%",
+          height = "92%",
           value = "",
           showPrintMargin = FALSE,
-          fontSize = 14,
+          fontSize = 16,
           highlightActiveLine = FALSE),
         
-        tags$button(id = "submitQuery", class = "btn btn-outline-success", "Submit Query")
+        tags$button(id = "submitQuery", class = "btn btn-md btn-outline-success", "Submit Query"),
+        tags$button(id = "formatQuery", class = "btn btn-md btn-outline-dark", "Format"),
       ),
+      
     )
   )
 )
@@ -280,9 +282,11 @@ server <- function(input, output, session) {
   onclick("viewTable", {
     
     # Get the number of rows
-    dbSendQuery(pg_con, glue("CREATE TEMP VIEW temp_view_1234 AS (SELECT * FROM \"{input$schema}\".\"{input$tables}\")"))
-    n_rows <- dbGetQuery(pg_con, "SELECT COUNT(*) FROM temp_view_1234")$count
-    dbSendQuery(pg_con, "DROP VIEW temp_view_1234")
+    n_rows <- 
+      dbGetQuery(
+        pg_con,
+        glue("WITH cte1 AS (SELECT * FROM \"{input$schema}\".\"{input$tables}\") SELECT COUNT(*) FROM cte1")
+      )$count
     
     # Show the modal
     showModal(
@@ -512,9 +516,11 @@ server <- function(input, output, session) {
         dbSendQuery(pg_con, glue("SET search_path TO public, {input$schema}"))
         
         # Get the number of rows
-        dbSendQuery(pg_con, glue("CREATE TEMP VIEW temp_view_1234 AS ({input$query})"))
-        n_rows <- dbGetQuery(pg_con, "SELECT COUNT(*) FROM temp_view_1234")$count
-        dbSendQuery(pg_con, "DROP VIEW temp_view_1234")
+        n_rows <- 
+          dbGetQuery(
+            pg_con,
+            glue("WITH cte1 AS ({input$query}) SELECT COUNT(*) FROM cte1")
+          )$count
         
         # Get the result
         dbGetQuery(pg_con, query)
@@ -589,6 +595,35 @@ server <- function(input, output, session) {
   })
   
   ########################################################
+  
+  # Reformat SQL code
+  onclick("formatQuery", {
+    original_query <- input$query
+    if(require(httr)){
+      tryCatch({
+        response <-
+          GET(
+            glue(
+              "https://sqlformat.org/api/v1/format?reindent=1&keyword_case=upper&sql={URLencode(original_query)}"
+            ),
+            use_proxy(
+              Sys.getenv("https_proxy")
+            )
+          )
+        updateAceEditor(
+          session = session,
+          editorId = "query",
+          value = content(response, as = "parsed")$result)
+      }, error = function(error){
+        showNotification(error$message)
+      })
+      
+    } else{
+      showNotification("You must have httr package installed to format.")
+    }
+  })
+  
+  #######################################################
   
   
   # Disconnect from DB
