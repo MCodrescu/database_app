@@ -309,7 +309,7 @@ server <- function(input, output, session) {
             }
             
         } else {
-          result <- "Driver must be one of: postgres, odbc"
+          result <- "Driver must be one of: postgres, odbc, teradatasql"
         }
       },
       error = function(error) {
