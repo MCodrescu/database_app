@@ -119,10 +119,10 @@ ui <- bootstrapPage(
         tags$h3(class = "text-center", "View Tables"),
 
         # Select schema
-        selectInput("schema", "Schema", choices = NULL, width = "100%"),
+        selectInput("schema", "Schema", choices = c("Loading..."), width = "100%", ),
 
         # Select table
-        selectInput("tables", "Table", choices = NULL, width = "100%"),
+        selectInput("tables", "Table", choices = c("Loading..."), width = "100%"),
         div(
           class = "row justify-content-between py-3",
 
@@ -285,11 +285,29 @@ server <- function(input, output, session) {
           )
           result <- "Success"
         } else if (identical(driver, "odbc")) {
-          con <- DBI::dbConnect(
-            odbc::odbc(),
-            dsn = database_credentials$connection
-          )
-          result <- "Success"
+          if(require(odbc)){
+            con <- DBI::dbConnect(
+              odbc::odbc(),
+              dsn = database_credentials$connection
+            )
+            result <- "Success"
+          } else {
+            showNotification("Please install odbc package.")
+          }
+          
+        } else if (identical(driver, "teradatasql")){
+            if(require(teradatasql)){
+              con <- DBI::dbConnect(
+                teradatasql::TeradataDriver(),
+                host = host,
+                user = username,
+                password = password
+              )
+              result <- "Success"
+            } else {
+              showNotification("Please install teradatasql package.")
+            }
+            
         } else {
           result <- "Driver must be one of: postgres, odbc"
         }
@@ -430,12 +448,15 @@ server <- function(input, output, session) {
       )
 
     # Get the number of rows
-    n_rows <-
+    n_rows <- tryCatch({
       dbGetQuery(
         con,
         glue("SELECT COUNT(*) FROM {table_sql}")
       )[1, 1]
-
+    }, error = function(error){
+      0
+    })
+      
 
     # Show the modal
     showModal(
@@ -452,7 +473,26 @@ server <- function(input, output, session) {
             server = TRUE,
             rownames = FALSE,
             {
-              dbGetQuery(con, glue("SELECT * FROM {table_sql} LIMIT 1000"))
+              if (identical(driver, "teradatasql")){
+                result <- tryCatch({
+                  dbGetQuery(con, glue("SELECT TOP 1000 * FROM {table_sql}"))
+                }, error = function(error){
+                  data.frame(
+                    result = error$message
+                  )
+                })
+              } else {
+                result <- tryCatch({
+                  dbGetQuery(con, glue("SELECT * FROM {table_sql} LIMIT 1000"))
+                }, error = function(error){
+                  data.frame(
+                    result = error$message
+                  )
+                })
+              }
+              
+              result
+              
             }
           )
         ),
