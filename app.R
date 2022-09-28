@@ -766,13 +766,19 @@ server <- function(input, output, session) {
 
       # Add Limit if needed
       if (!grepl("LIMIT|Limit|limit", query)) {
-        query <- glue("{query} LIMIT 100")
+        if (driver == "teradatasql"){
+          query <- gsub("SELECT", "SELECT TOP 100", {query})
+        } else {
+          query <- glue("{query} LIMIT 100")
+        }
       }
 
       result <- tryCatch(
         {
           # Set search path
-          dbSendQuery(con, glue("SET search_path TO public, {input$schema}"))
+          if (driver != "teradatasql"){
+            dbSendQuery(con, glue("SET search_path TO public, {input$schema}"))
+          }
 
           # Get the number of rows
           n_rows <-
@@ -792,7 +798,9 @@ server <- function(input, output, session) {
       result <- tryCatch(
         {
           # Set search path
-          dbSendQuery(con, glue("SET search_path TO public, {input$schema}"))
+          if (driver != "teradatasql"){
+            dbSendQuery(con, glue("SET search_path TO public, {input$schema}"))
+          }
 
           # Send query
           dbSendQuery(con, query)
@@ -848,10 +856,9 @@ server <- function(input, output, session) {
         {
 
           # Set search path
-          dbSendQuery(
-            con,
-            glue("SET search_path TO public, {input$schema}")
-          )
+          if (driver != "teradatasql"){
+            dbSendQuery(con, glue("SET search_path TO public, {input$schema}"))
+          }
 
           # Get query and write to csv
           write_csv(
