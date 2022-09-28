@@ -289,6 +289,50 @@ server <- function(input, output, session) {
           "\"|\\."
         )
       
+      # Allow user input if no schemas found
+      if (identical(schemas, character(0))){
+        showModal(
+          modalDialog(
+            title = "Manual Schema Input",
+            tagList(
+              textInput(
+                "manualSchemaInput",
+                "No schemas found. Please input a schema manually.",
+                placeholder = "public",
+                width = "100%"
+              )
+            ),
+            footer = tagList(
+              tags$button(
+                id = "confirmNewSchema",
+                class = "btn btn-outline-secondary",
+                "Confirm")
+            )
+          )
+        )
+        
+        onclick("confirmNewSchema", {
+          
+          if (input$manualSchemaInput != ""){
+            schemas <- input$manualSchemaInput
+            
+            # Update schema list
+            updateSelectizeInput(
+              session,
+              "schema",
+              choices = schemas,
+              selected = schemas[1],
+              server = TRUE
+            )
+            
+            removeModal()
+            
+          } else {
+            showNotification("You must input at least one schema")
+          }
+        })
+        
+      }
       
       # Update schema list
       updateSelectizeInput(
@@ -343,12 +387,23 @@ server <- function(input, output, session) {
   # View tables on click view button
   onclick("viewTable", {
     
+    # Generate a generic table identifier
+    table_sql <-
+      dbQuoteIdentifier(
+        con,
+        Id(
+          schema = input$schema,
+          table = input$tables
+        )
+      )
+    
     # Get the number of rows
     n_rows <- 
       dbGetQuery(
-        pg_con,
-        glue("WITH cte1 AS (SELECT * FROM \"{input$schema}\".\"{input$tables}\") SELECT COUNT(*) FROM cte1")
-      )$count
+        con,
+        glue("SELECT COUNT(*) FROM {table_sql}")
+      )[1,1]
+    
     
     # Show the modal
     showModal(
@@ -365,7 +420,7 @@ server <- function(input, output, session) {
             server = TRUE,
             rownames = FALSE,
             {
-              dbGetQuery(pg_con, glue("SELECT * FROM \"{input$schema}\".\"{input$tables}\" ORDER BY RANDOM() LIMIT 100"))
+              dbGetQuery(con, glue("SELECT * FROM {table_sql} LIMIT 1000"))
             }
           )
         ),
@@ -697,7 +752,7 @@ server <- function(input, output, session) {
   
   # Disconnect from DB
   session$onSessionEnded(function(){
-    try(dbDisconnect(pg_con))
+    try(dbDisconnect(con))
     stopApp()
   })
   
