@@ -190,12 +190,12 @@ server <- function(input, output, session) {
   connectionStatus <- FALSE
 
   # Create a place to store DB credentials
-  dbc_path <- 
+  dbc_path <-
     glue(
       "{Sys.getenv(\"USERPROFILE\")}\\AppData\\Local\\Programs\\Globys_App\\"
     )
   if (file.exists(glue("{dbc_path}\\database_credentials.csv"))) {
-    connections <- 
+    connections <-
       read_csv(
         glue("{dbc_path}\\database_credentials.csv"),
         show_col_types = FALSE
@@ -204,7 +204,7 @@ server <- function(input, output, session) {
     dir.create(dbc_path)
     file.create(glue("{dbc_path}\\database_credentials.csv"))
     connections <- as.data.frame(matrix(nrow = 1, ncol = 7))
-    colnames(connections) <- 
+    colnames(connections) <-
       c("connection", "host", "username", "password", "port", "database", "driver")
     write_csv(connections, glue("{dbc_path}\\database_credentials.csv"))
   }
@@ -246,7 +246,7 @@ server <- function(input, output, session) {
 
   # Connect to DB
   onclick("connectButton", {
-    connections <- 
+    connections <-
       read_csv(
         glue("{dbc_path}\\database_credentials.csv"),
         show_col_types = FALSE
@@ -485,12 +485,14 @@ server <- function(input, output, session) {
             dbGetQuery(
               con,
               glue(
-                "SELECT * FROM \"{input$schema}\".\"{input$tables}\" ")
-              ),
+                "SELECT * FROM {table_sql}"
+              )
+            ),
             glue(
-              "{Sys.getenv(\"USERPROFILE\")}\\Downloads\\query_result_{format(Sys.time(), \"%Y-%m-%d-%H%M%S\")}.csv")
+              "{Sys.getenv(\"USERPROFILE\")}\\Downloads\\query_result_{format(Sys.time(), \"%Y-%m-%d-%H%M%S\")}.csv"
             )
-          result <- 
+          )
+          result <-
             glue(
               "Downloaded Successfully to {Sys.getenv(\"USERPROFILE\")}\\Downloads"
             )
@@ -525,7 +527,7 @@ server <- function(input, output, session) {
 
       result <- tryCatch(
         {
-          dbSendQuery(con, glue("DROP TABLE \"{input$schema}\".\"{table}\""))
+          dbSendQuery(con, glue("DROP TABLE {table_sql}"))
           result <- "Success"
         },
         error = function(error) {
@@ -619,7 +621,7 @@ server <- function(input, output, session) {
   onclick("manageConnectionsButton", {
 
     # Get most updated connections file
-    connections <- 
+    connections <-
       read_csv(
         glue("{dbc_path}\\database_credentials.csv"),
         show_col_types = FALSE
@@ -720,7 +722,7 @@ server <- function(input, output, session) {
     n_rows <- 0
 
     # Check if it is a select statement
-    if (grepl("SELECT|Select|select", query)) {
+    if (grepl("SELECT|Select|select", query) & !grepl("CREATE", query)) {
 
       # Add Limit if needed
       if (!grepl("LIMIT|Limit|limit", query)) {
@@ -737,7 +739,7 @@ server <- function(input, output, session) {
             dbGetQuery(
               con,
               glue("WITH cte1 AS ({input$query}) SELECT COUNT(*) FROM cte1")
-            )$count
+            )[1,1]
 
           # Get the result
           dbGetQuery(con, query)
@@ -816,7 +818,7 @@ server <- function(input, output, session) {
             dbGetQuery(con, input$query),
             glue("{Sys.getenv(\"USERPROFILE\")}\\Downloads\\query_result_{format(Sys.time(), \"%Y-%m-%d-%H%M%S\")}.csv")
           )
-          result <- 
+          result <-
             glue("Downloaded Successfully to {Sys.getenv(\"USERPROFILE\")}\\Downloads")
         },
         error = function(error) {
@@ -841,7 +843,7 @@ server <- function(input, output, session) {
         {
           response <-
             GET(
-              paste0(
+              glue(
                 "https://sqlformat.org/api/v1/format",
                 "?reindent=1",
                 "&keyword_case=upper",
