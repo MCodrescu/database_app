@@ -439,7 +439,7 @@ server <- function(input, output, session) {
       result <- tryCatch({
         
         # Get query and write to csv
-        write_csv(dbGetQuery(pg_con, glue("SELECT * FROM \"{input$schema}\".\"{input$tables}\" ")), glue("{Sys.getenv(\"USERPROFILE\")}\\Downloads\\query_result_{format(Sys.time(), \"%Y-%m-%d-%H%M%S\")}.csv"))
+        write_csv(dbGetQuery(con, glue("SELECT * FROM \"{input$schema}\".\"{input$tables}\" ")), glue("{Sys.getenv(\"USERPROFILE\")}\\Downloads\\query_result_{format(Sys.time(), \"%Y-%m-%d-%H%M%S\")}.csv"))
         result <- glue("Downloaded Successfully to {Sys.getenv(\"USERPROFILE\")}\\Downloads")
         
       }, error = function(error){
@@ -466,7 +466,7 @@ server <- function(input, output, session) {
       removeModal()
       
       result <- tryCatch({
-        dbSendQuery(pg_con, glue("DROP TABLE \"{input$schema}\".\"{table}\""))
+        dbSendQuery(con, glue("DROP TABLE \"{input$schema}\".\"{table}\""))
         result <- "Success"
       }, error = function(error){
         result <- error$message
@@ -514,7 +514,7 @@ server <- function(input, output, session) {
       
       # Write data frame to DB
       result <- tryCatch({
-        dbWriteTable(pg_con,
+        dbWriteTable(con,
                      name = Id(table = input$newTableName, schema = input$schema),
                      value = data.frame(new_table),
                      overwrite = TRUE
@@ -637,17 +637,17 @@ server <- function(input, output, session) {
       
       result <- tryCatch({
         # Set search path
-        dbSendQuery(pg_con, glue("SET search_path TO public, {input$schema}"))
+        dbSendQuery(con, glue("SET search_path TO public, {input$schema}"))
         
         # Get the number of rows
         n_rows <- 
           dbGetQuery(
-            pg_con,
+            con,
             glue("WITH cte1 AS ({input$query}) SELECT COUNT(*) FROM cte1")
           )$count
         
         # Get the result
-        dbGetQuery(pg_con, query)
+        dbGetQuery(con, query)
       },
       error = function(error) {
         result <- data.frame(result = error$message)
@@ -656,10 +656,10 @@ server <- function(input, output, session) {
     } else {
       result <- tryCatch({
         # Set search path
-        dbSendQuery(pg_con, glue("SET search_path TO public, {input$schema}"))
+        dbSendQuery(con, glue("SET search_path TO public, {input$schema}"))
         
         # Send query
-        dbSendQuery(pg_con, query)
+        dbSendQuery(con, query)
         result <- data.frame(result = "Success")
       },
       error = function(error) {
@@ -701,10 +701,10 @@ server <- function(input, output, session) {
       result <- tryCatch({
         
         # Set search path
-        dbSendQuery(pg_con, glue("SET search_path TO public, {input$schema}"))
+        dbSendQuery(con, glue("SET search_path TO public, {input$schema}"))
         
         # Get query and write to csv
-        write_csv(dbGetQuery(pg_con, input$query), glue("{Sys.getenv(\"USERPROFILE\")}\\Downloads\\query_result_{format(Sys.time(), \"%Y-%m-%d-%H%M%S\")}.csv"))
+        write_csv(dbGetQuery(con, input$query), glue("{Sys.getenv(\"USERPROFILE\")}\\Downloads\\query_result_{format(Sys.time(), \"%Y-%m-%d-%H%M%S\")}.csv"))
         result <- glue("Downloaded Successfully to {Sys.getenv(\"USERPROFILE\")}\\Downloads")
         
       }, error = function(error){
