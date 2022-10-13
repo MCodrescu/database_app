@@ -475,7 +475,7 @@ server <- function(input, output, session) {
             {
               if (identical(driver, "teradatasql")){
                 result <- tryCatch({
-                  dbGetQuery(con, glue("SELECT TOP 1000 * FROM {table_sql}"))
+                  dbGetQuery(con, glue("SELECT TOP 100 * FROM {table_sql}"))
                 }, error = function(error){
                   data.frame(
                     result = error$message
@@ -483,7 +483,7 @@ server <- function(input, output, session) {
                 })
               } else {
                 result <- tryCatch({
-                  dbGetQuery(con, glue("SELECT * FROM {table_sql} LIMIT 1000"))
+                  dbGetQuery(con, glue("SELECT * FROM {table_sql} LIMIT 100"))
                 }, error = function(error){
                   data.frame(
                     result = error$message
