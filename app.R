@@ -1078,16 +1078,13 @@ server <- function(input, output, session) {
       result <- tryCatch(
         {
           # Set search path
-          if (driver != "teradatasql"){
+          if (driver == "postgres" | "vertica"){
             dbSendQuery(con, glue("SET search_path TO public, {input$schema}"))
           }
 
           # Get the number of rows
           n_rows <-
-            dbGetQuery(
-              con,
-              glue("WITH cte1 AS ({input$query}) SELECT COUNT(*) FROM cte1")
-            )[1,1]
+            get_n_rows()
 
           # Get the result
           dbGetQuery(con, query)
@@ -1100,7 +1097,7 @@ server <- function(input, output, session) {
       result <- tryCatch(
         {
           # Set search path
-          if (driver != "teradatasql"){
+          if (driver == "postgres" | "vertica"){
             dbSendQuery(con, glue("SET search_path TO public, {input$schema}"))
           }
 
@@ -1158,7 +1155,7 @@ server <- function(input, output, session) {
         {
 
           # Set search path
-          if (driver != "teradatasql"){
+          if (driver == "postgres" | "vertica"){
             dbSendQuery(con, glue("SET search_path TO public, {input$schema}"))
           }
 
