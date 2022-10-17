@@ -1078,7 +1078,7 @@ server <- function(input, output, session) {
       result <- tryCatch(
         {
           # Set search path
-          if (driver == "postgres" | "vertica"){
+          if (driver %in% c("postgres", "vertica")){
             dbSendQuery(con, glue("SET search_path TO public, {input$schema}"))
           }
 
@@ -1097,7 +1097,7 @@ server <- function(input, output, session) {
       result <- tryCatch(
         {
           # Set search path
-          if (driver == "postgres" | "vertica"){
+          if (driver %in% c("postgres", "vertica")){
             dbSendQuery(con, glue("SET search_path TO public, {input$schema}"))
           }
 
@@ -1155,7 +1155,7 @@ server <- function(input, output, session) {
         {
 
           # Set search path
-          if (driver == "postgres" | "vertica"){
+          if (driver %in% c("postgres", "vertica")){
             dbSendQuery(con, glue("SET search_path TO public, {input$schema}"))
           }
 
