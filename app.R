@@ -176,30 +176,54 @@ ui <- bootstrapPage(
         fileInput("newTableUpload", "Upload CSV", accept = ".csv", width = "100%"),
       ),
       div(
-        class = "col-10 col-lg-8 bg-light p-3 border rounded shadow",
+        class = "col-10 col-lg-8 bg-light pb-2 pt-1 border rounded shadow",
         id = "queryDiv",
         style = "display: none; height: 80vh;",
-
-        # Send query to database
-        aceEditor(
-          "query",
-          mode = "pgsql",
-          height = "90%",
-          value = "",
-          showPrintMargin = FALSE,
-          fontSize = 16,
-          highlightActiveLine = FALSE
+        
+        div(
+          class = "row mt-0 pt-0",
+          div(
+            class = "col",
+            tags$button(
+              id = "formatQuery",
+              class = "btn btn-sm btn-outline-none float-right",
+              tags$img(
+                src = "info-square.svg",
+                style = "width: 20px; height: 20px;"
+              ),
+              " Format "
+            ),
+            tags$button(
+              id = "submitQuery",
+              class = "btn btn-sm btn-outline-none float-right",
+              tags$img(
+                src = "caret-right-square.svg",
+                style = "width: 20px; height: 20px;"
+              ),
+              " Run "
+            ),
+          )
         ),
-        tags$button(
-          id = "submitQuery",
-          class = "btn btn-md btn-outline-success",
-          "Submit Query"
-        ),
-        tags$button(
-          id = "formatQuery",
-          class = "btn btn-md btn-outline-dark",
-          "Format"
-        ),
+        
+        div(
+          class = "row h-100 pt-1",
+          div(
+            class = "col",
+            # Send query to database
+            aceEditor(
+              "query",
+              mode = "pgsql",
+              height = "95%",
+              value = "",
+              showPrintMargin = FALSE,
+              fontSize = 16,
+              highlightActiveLine = FALSE
+            ),
+          )
+        )
+        
+        
+        
       ),
     )
   )
