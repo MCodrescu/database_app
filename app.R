@@ -94,16 +94,16 @@ ui <- bootstrapPage(
         div(
           class = "row",
           div(
-            class = "col-9",
+            class = "col",
             # Header
-            tags$h3(class = "text-start", "Connect to a Database"),
+            tags$h3(class = "text-start", "Connect"),
           ),
           
           div(
-            class = "col-3",
+            class = "col",
             # Add new connection button
             tags$button(
-              class = "btn btn-light mt-4",
+              class = "btn btn-light mt-3 float-right",
               id = "addConnectionButton",
               tags$img(
                 src = "plus-square.svg",
@@ -112,7 +112,7 @@ ui <- bootstrapPage(
             ),
             # Edit connections button
             tags$button(
-              class = "btn btn-light mt-4",
+              class = "btn btn-light mt-3 float-right",
               id = "manageConnectionsButton",
               tags$img(
                 src = "gear.svg",
