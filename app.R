@@ -1,19 +1,21 @@
 library(shiny)
 library(shinyjs)
 library(readr)
-library(RPostgres)
 library(dplyr)
 library(glue)
 library(DT)
 library(janitor)
 library(shinyAce)
 library(stringr)
+library(purrr)
+library(DBI)
 
 ui <- bootstrapPage(
   theme = bslib::bs_theme(version = 5),
 
   # Initiate shinyjs
   useShinyjs(),
+ 
 
   #######################################################
 
@@ -87,24 +89,47 @@ ui <- bootstrapPage(
         class = "col-10 col-md-9 col-lg-6 bg-light py-3 px-5 border rounded shadow",
         id = "connectionDiv",
 
-        # Header
-        tags$h3(class = "text-center", "Select a Connection"),
-
+        
+        
+        div(
+          class = "row",
+          div(
+            class = "col-9",
+            # Header
+            tags$h3(class = "text-start", "Connect to a Database"),
+          ),
+          
+          div(
+            class = "col-3",
+            # Add new connection button
+            tags$button(
+              class = "btn btn-light mt-4",
+              id = "addConnectionButton",
+              tags$img(
+                src = "plus-square.svg",
+                style = "width: 25px; height: 25px;"
+              )
+            ),
+            # Edit connections button
+            tags$button(
+              class = "btn btn-light mt-4",
+              id = "manageConnectionsButton",
+              tags$img(
+                src = "gear.svg",
+                style = "width: 25px; height: 25px;"
+              )
+            ),
+          ),
+        ),
+        
         # Select a connection
         selectInput("connectionSelect", "", choices = NULL, width = "100%"),
-
+        
         # Connect button
         tags$button(
           class = "btn btn-outline-success w-100 mt-2 mb-3",
           id = "connectButton",
           "Connect"
-        ),
-
-        # Add connection button
-        tags$button(
-          class = "btn btn-outline-secondary w-100 mt-2 mb-3",
-          id = "manageConnectionsButton",
-          "Manage Connections"
         ),
 
         # Connection status
@@ -192,21 +217,35 @@ server <- function(input, output, session) {
   # Create a place to store DB credentials
   dbc_path <-
     glue(
-      "{Sys.getenv(\"USERPROFILE\")}\\AppData\\Local\\Programs\\Globys_App\\"
+      "{Sys.getenv(\"USERPROFILE\")}\\AppData\\Local\\Programs\\Database_App\\"
     )
-  if (file.exists(glue("{dbc_path}\\database_credentials.csv"))) {
-    connections <-
+  if (file.exists(glue("{dbc_path}\\database_connections.csv"))) {
+    connections_df <-
       read_csv(
-        glue("{dbc_path}\\database_credentials.csv"),
+        glue("{dbc_path}\\database_connections.csv"),
         show_col_types = FALSE
       )
+    connections <- connections_df$connection_id
+    names(connections) <- connections_df$connection_name
   } else {
     dir.create(dbc_path)
-    file.create(glue("{dbc_path}\\database_credentials.csv"))
-    connections <- as.data.frame(matrix(nrow = 1, ncol = 7))
-    colnames(connections) <-
-      c("connection", "host", "username", "password", "port", "database", "driver")
-    write_csv(connections, glue("{dbc_path}\\database_credentials.csv"))
+    file.create(
+      glue(
+        "{dbc_path}\\database_connections.csv"
+        )
+      )
+    connections_df <- data.frame(
+      connection_id = integer(),
+      connection_name = character()
+    )
+    write_csv(
+      connections_df,
+      glue(
+        "{dbc_path}\\database_connections.csv"
+        )
+      )
+    connections <- connections_df$connection_id
+    names(connections) <- connections_df$connection_name
   }
 
 
@@ -242,74 +281,366 @@ server <- function(input, output, session) {
   ###################################################
 
   # Update the connection select
-  updateSelectInput(inputId = "connectionSelect", choices = connections$connection)
+  updateSelectInput(
+    inputId = "connectionSelect",
+    choices = connections
+  )
 
   # Connect to DB
   onclick("connectButton", {
-    connections <-
+    database_credentials <-
       read_csv(
-        glue("{dbc_path}\\database_credentials.csv"),
+        glue("{dbc_path}\\connection_{input$connectionSelect}.csv"),
         show_col_types = FALSE
       )
-
-    # Here for legacy reasons
-    if (ncol(connections) == 6) {
-      connections <-
-        connections |>
-        mutate(driver = NA)
-    }
-
-    database_credentials <-
-      connections |>
-      filter(connection == input$connectionSelect)
-
-
-    # Get user credentials
-    host <- database_credentials$host
-    username <- database_credentials$username
-    password <- database_credentials$password
-    port <- database_credentials$port
-    database <- database_credentials$database
-    driver <- database_credentials$driver
-
+    
+    driver <-
+      database_credentials$driver
+    
     # Try connecting to DB
     result <- tryCatch(
       {
-        if (identical(driver, "postgres")) {
-          con <- dbConnect(Postgres(),
-            host = host,
-            user = username,
-            password = password,
-            port = port,
-            dbname = database
-          )
-          result <- "Success"
-        } else if (identical(driver, "odbc")) {
-          if(require(odbc)){
+        if (driver == "postgres"){
+          if (require("RPostgres")){
             con <- DBI::dbConnect(
-              odbc::odbc(),
-              dsn = database_credentials$connection
+              RPostgres::Postgres(),
+              host = database_credentials$host,
+              user = database_credentials$user,
+              password = database_credentials$password,
+              port = database_credentials$port,
+              dbname = database_credentials$dbname
             )
+            
+            # Get all schemas
+            schemas <-
+              dbGetQuery(
+                con,
+                "
+                SELECT schema_name
+                FROM information_schema.schemata
+                ORDER BY schema_name;
+                "
+              ) |>
+              pull(
+                schema_name
+              )
+            
+            # Create a unique get tables function
+            get_tables <- function(schema) {
+              dbGetQuery(
+                con,
+                glue(
+                  "
+                  SELECT *
+                  FROM information_schema.tables
+                  WHERE table_schema = '{schema}'
+                  ORDER BY table_name;
+                  "
+                )
+              ) |>
+                pull(
+                  table_name
+                )
+            }
+            
+            # Create a unique get row count function
+            get_n_rows <- function(schema, table){
+              dbGetQuery(
+                con,
+                glue(
+                  "
+                  WITH cte1 AS (
+                    SELECT * 
+                    FROM \"{schema}\".\"{table}\"
+                  )
+                  SELECT
+                    COUNT(*)
+                  FROM cte1
+                  "
+                )
+              ) |>
+                pull(
+                  count
+                )
+            }
+            
+            # Create a unique preview function
+            get_preview <- function(schema, table){
+              dbGetQuery(
+                con,
+                glue(
+                  "
+                  SELECT * 
+                  FROM \"{schema}\".\"{table}\"
+                  LIMIT 100;
+                  "
+                )
+              )
+            }
+            
             result <- "Success"
           } else {
-            showNotification("Please install odbc package.")
+            showNotification("Please install RPostgres package.")
           }
           
-        } else if (identical(driver, "teradatasql")){
+        } else if (driver == "teradata"){
             if(require(teradatasql)){
               con <- DBI::dbConnect(
                 teradatasql::TeradataDriver(),
-                host = host,
-                user = username,
-                password = password
+                host = database_credentials$host,
+                user = database_credentials$user,
+                password = database_credentials$password
               )
+              
+              # Get all schemas
+              schemas <-
+                dbListObjects(con) |>
+                filter(
+                  is_prefix
+                ) |>
+                mutate(
+                  schema = map_chr(
+                    table,
+                    ~ DBI::dbUnquoteIdentifier(con, .x)[[1]]@name
+                  )
+                ) |>
+                arrange(
+                  schema
+                ) |>
+                pull(
+                  schema
+                )
+
+              
+              # Create a unique get tables function
+              get_tables <- function(schema) {
+                dbListTables(con, schema = schema)
+              }
+              
+              # Create a unique get row count function
+              get_n_rows <- function(schema, table){
+                
+                dbGetQuery(
+                  con,
+                  glue(
+                    "
+                    SELECT COUNT(*) AS count
+                    FROM {table_sql}
+                    "
+                  )
+                ) |>
+                  pull(
+                    count
+                  )
+              }
+              
+              # Create a unique preview function
+              get_preview <- function(schema, table){
+                table_sql <-
+                  dbQuoteIdentifier(
+                    con,
+                    Id(
+                      schema = schema,
+                      table = tables
+                    )
+                  )
+                
+                dbGetQuery(
+                  con,
+                  glue(
+                    "
+                  SELECT TOP 100 
+                  FROM {table_sql};
+                  "
+                  )
+                )
+              }
+              
               result <- "Success"
             } else {
               showNotification("Please install teradatasql package.")
             }
             
+        } else if (driver == "snowflake"){
+            if(require(odbc)){
+              if ("SnowflakeDSIIDriver" %in% pull(odbc::odbcListDrivers(), name)){
+                con <- DBI::dbConnect(
+                  odbc::odbc(),
+                  driver = "SnowflakeDSIIDriver",
+                  uid = database_credentials$user,
+                  pwd = database_credentials$password,
+                  server = database_credentials$server,
+                  database = database_credentials$database,
+                  schema = database_credentials$schema,
+                  warehouse = database_credentials$warehouse,
+                  role = database_credentials$role
+                )
+                
+                schemas <-
+                  dbGetQuery(
+                    con,
+                    "
+                    SELECT schema_name
+                    FROM information_schema.schemata
+                    ORDER BY schema_name;
+                    "
+                  ) |>
+                  pull(
+                    SCHEMA_NAME
+                  )
+                
+                # Create a unique get tables function
+                get_tables <- function(schema) {
+                  dbGetQuery(
+                    con,
+                    glue(
+                      "
+                      SELECT table_name
+                      FROM information_schema.tables
+                      WHERE table_schema = '{schema}'
+                      ORDER BY table_name;
+                      " 
+                    )
+                  ) |>
+                    pull(
+                      TABLE_NAME
+                    )
+                }
+                
+                
+                # Create a unique get row count function
+                get_n_rows <- function(schema, table){
+                  
+                  dbGetQuery(
+                    con,
+                    glue(
+                      "
+                      SELECT COUNT(*) AS count
+                      FROM \"{schema}\".\"{table}\"
+                      "
+                    )
+                  ) |>
+                    pull(
+                      COUNT
+                    )
+                }
+                
+                # Create a unique preview function
+                get_preview <- function(schema, table){
+                  dbGetQuery(
+                    con,
+                    glue(
+                      "
+                      SELECT * 
+                      FROM \"{schema}\".\"{table}\"
+                      LIMIT 100
+                      "
+                    )
+                  )
+                }
+                
+                result <- "Success"
+              } else {
+                showNotification("Please install the Snowflake 64 bit driver")
+              }
+              
+            } else {
+              showNotification("Please install odbc package.")
+            } 
+        } else if (driver == "vertica"){
+            if(require(odbc)){
+              if ("Vertica" %in% pull(odbc::odbcListDrivers(), name)){
+                con <- DBI::dbConnect(
+                  odbc::odbc(),
+                  driver = "Vertica",
+                  username = database_credentials$username,
+                  password = database_credentials$password,
+                  server = database_credentials$server,
+                  database = database_credentials$database,
+                  port = database_credentials$port
+                )
+                
+                # Get all schemas
+                schemas <-
+                  dbGetQuery(
+                    con,
+                    "
+                    SELECT
+                      schema_id, 
+                      schema_name,
+                      u.user_name as owner,
+                      create_time,
+                      is_system_schema
+                    FROM v_catalog.schemata s
+                    JOIN v_catalog.users u
+                      ON s.schema_owner_id = u.user_id
+                    ORDER BY schema_name;
+                    "
+                  ) |>
+                  pull(
+                    schema_name
+                  )
+                
+                # Create a unique get tables function
+                get_tables <- function(schema) {
+                  dbGetQuery(
+                    con,
+                    glue(
+                      "
+                      SELECT 
+                        table_schema,
+                        table_name,
+                        create_time
+                      FROM v_catalog.tables
+                      WHERE table_schema = '{schema}'
+                      ORDER BY table_name;
+                      "
+                    )
+                  ) |>
+                    pull(
+                      table_name
+                    )
+                }
+                
+                # Create a unique get row count function
+                get_n_rows <- function(schema, table){
+                  dbGetQuery(
+                    con,
+                    glue(
+                      "
+                      SELECT COUNT(*) AS COUNT
+                      FROM \"{schema}\".\"{table}\"
+                      "
+                    )
+                  ) |>
+                    pull(
+                      COUNT
+                    )
+                }
+                
+                # Create a unique get preview function
+                get_preview <- function(schema, table){
+                  dbGetQuery(
+                    con,
+                    glue(
+                      "
+                      SELECT * 
+                      FROM \"{schema}\".\"{table}\"
+                      LIMIT 100;
+                      "
+                    )
+                  )
+                }
+                
+                result <- "Success"
+              } else {
+                showNotification("Please install the Vertica 64 bit driver")
+              }
+            } else {
+            showNotification("Please install odbc package.")
+            }
         } else {
-          result <- "Driver must be one of: postgres, odbc, teradatasql"
+          result <- "Driver must be one of: postgres, teradatasql, vertica, or snowflake"
         }
       },
       error = function(error) {
@@ -324,67 +655,11 @@ server <- function(input, output, session) {
       connectionStatus <- TRUE
       html(
         "connectionStatus",
-        glue("Connected to: {database_credentials$connection}")
+        glue("Connected to: {input$connectionSelect}")
       )
       hideElement("connectionDiv")
       showElement("viewDiv")
-
-      # List all schemas
-      schemas <-
-        str_remove_all(
-          str_split(
-            sapply(
-              filter(dbListObjects(con), is_prefix)$table,
-              dbQuoteIdentifier,
-              conn = con
-            ),
-            " "
-          ),
-          "\"|\\."
-        )
-
-      # Allow user input if no schemas found
-      if (identical(schemas, character(0))) {
-        showModal(
-          modalDialog(
-            title = "Manual Schema Input",
-            tagList(
-              textInput(
-                "manualSchemaInput",
-                "No schemas found. Please input a schema manually.",
-                placeholder = "public",
-                width = "100%"
-              )
-            ),
-            footer = tagList(
-              tags$button(
-                id = "confirmNewSchema",
-                class = "btn btn-outline-secondary",
-                "Confirm"
-              )
-            )
-          )
-        )
-
-        onclick("confirmNewSchema", {
-          if (input$manualSchemaInput != "") {
-            schemas <- input$manualSchemaInput
-
-            # Update schema list
-            updateSelectizeInput(
-              session,
-              "schema",
-              choices = schemas,
-              selected = schemas[1],
-              server = TRUE
-            )
-
-            removeModal()
-          } else {
-            showNotification("You must input at least one schema")
-          }
-        })
-      }
+      
 
       # Update schema list
       updateSelectizeInput(
@@ -394,19 +669,7 @@ server <- function(input, output, session) {
         selected = schemas[1],
         server = TRUE
       )
-
-      # Set initial table options
-      get_tables <- function(schema) {
-        str_remove_all(
-          sapply(
-            dbListObjects(con, Id(schema = schema))$table,
-            dbQuoteIdentifier,
-            conn = con
-          ),
-          glue("\"|{schema}|\\.")
-        )
-      }
-
+      
       # Set initial tables
       current_tables <- get_tables(schemas[1])
       updateSelectizeInput(
@@ -437,24 +700,15 @@ server <- function(input, output, session) {
   # View tables on click view button
   onclick("viewTable", {
 
-    # Generate a generic table identifier
-    table_sql <-
-      dbQuoteIdentifier(
-        con,
-        Id(
-          schema = input$schema,
-          table = input$tables
-        )
-      )
 
     # Get the number of rows
     n_rows <- tryCatch({
-      dbGetQuery(
-        con,
-        glue("SELECT COUNT(*) FROM {table_sql}")
-      )[1, 1]
+      get_n_rows(
+        input$schema,
+        input$tables
+      )
     }, error = function(error){
-      0
+      print(error)
     })
       
 
@@ -473,26 +727,14 @@ server <- function(input, output, session) {
             server = TRUE,
             rownames = FALSE,
             {
-              if (identical(driver, "teradatasql")){
-                result <- tryCatch({
-                  dbGetQuery(con, glue("SELECT TOP 100 * FROM {table_sql}"))
-                }, error = function(error){
-                  data.frame(
-                    result = error$message
-                  )
-                })
-              } else {
-                result <- tryCatch({
-                  dbGetQuery(con, glue("SELECT * FROM {table_sql} LIMIT 100"))
-                }, error = function(error){
-                  data.frame(
-                    result = error$message
-                  )
-                })
-              }
-              
+              result <- tryCatch({
+                get_preview(input$schema, input$tables)
+              }, error = function(error){
+                data.frame(
+                  error = error$message
+                )
+              })
               result
-              
             }
           )
         ),
@@ -661,18 +903,11 @@ server <- function(input, output, session) {
   onclick("manageConnectionsButton", {
 
     # Get most updated connections file
-    connections <-
+    database_credentials <-
       read_csv(
-        glue("{dbc_path}\\database_credentials.csv"),
+        glue("{dbc_path}\\connection_{input$connectionSelect}.csv"),
         show_col_types = FALSE
       )
-
-    # Here for legacy reasons
-    if (ncol(connections) == 6) {
-      connections <-
-        connections |>
-        mutate(driver = NA)
-    }
 
     # Set table proxy
     proxy <- dataTableProxy("dbConnectionsTable")
@@ -682,18 +917,13 @@ server <- function(input, output, session) {
       modalDialog(
         easyClose = TRUE,
         size = "xl",
-        h3("Manage Connections"),
+        title = "Manage Connection",
         div(
           class = "table-responsive",
           style = "max-height: 70vh;",
           DTOutput("dbConnectionsTable")
         ),
         footer = tagList(
-          tags$button(
-            id = "addNewConnection",
-            class = "btn btn-outline-success",
-            "Add New"
-          ),
           tags$button(
             id = "deleteConnection",
             class = "btn btn-outline-danger",
@@ -702,16 +932,19 @@ server <- function(input, output, session) {
           tags$button(
             id = "manageConfirm",
             class = "btn btn-outline-secondary",
-            "Confirm",
+            style = "display: none;",
+            "Confirm Changes",
             "data-bs-dismiss" = "modal"
           )
         )
       )
     )
-
+    
+  
     # Create an editable datatable
     output$dbConnectionsTable <- renderDT({
-      datatable(connections,
+      datatable(
+        database_credentials,
         options = list(dom = "t"),
         editable = TRUE
       )
@@ -719,34 +952,79 @@ server <- function(input, output, session) {
 
     # # Save changes to csv file
     observeEvent(input$dbConnectionsTable_cell_edit, {
-      connections <<- editData(connections, input$dbConnectionsTable_cell_edit, proxy)
-    })
-
-    # Add new row button
-    onclick("addNewConnection", {
-      connections[nrow(connections) + 1, ] <- data.frame(matrix(nrow = 1, ncol = 7))
-      replaceData(proxy, connections)
+      showElement("manageConfirm")
+      database_credentials <<- editData(
+        database_credentials,
+        input$dbConnectionsTable_cell_edit,
+        proxy
+      )
     })
 
     # Delete row button
     onclick("deleteConnection", {
-      row_n <- input$dbConnectionsTable_rows_selected
-      connections <- connections[-c(row_n), ]
-      replaceData(proxy, connections)
-
-      # Replace the connections file
-      file.remove(glue("{dbc_path}\\database_credentials.csv"))
-      write_csv(connections, glue("{dbc_path}\\database_credentials.csv"))
+      connections_df <-
+        read_csv(
+          glue("{dbc_path}\\database_connections.csv"),
+          show_col_types = FALSE
+        )
+      
+      connections_df <-
+        connections_df |>
+        filter(
+          connection_id != input$connectionSelect
+        ) |>
+        mutate(
+          old_id = connection_id,
+          new_id = row_number()
+        )
+        
+      connections_df |>
+        select(
+          old_id,
+          new_id
+        ) |>
+        pmap(
+          function(old_id, new_id){
+            file.rename(
+              glue(
+                "{dbc_path}\\connection_{old_id}.csv",
+              ),
+              glue(
+                "{dbc_path}\\connection_{new_id}.csv",
+              )
+            )
+          }
+        )
+      
+      connections_df |>
+        select(
+          connection_id = new_id,
+          connection_name
+        ) |>
+        write_csv(
+          glue(
+            "{dbc_path}\\database_connections.csv"
+          )
+        )
+      
+      connections <- connections_df$connection_id
+      names(connections) <- connections_df$connection_name
+      
+      updateSelectInput(
+        inputId = "connectionSelect",
+        choices = connections
+      )
+      
+      removeModal()
+      showNotification("Done!")
     })
 
     # Refresh the page
     onclick("manageConfirm", {
       # Replace the connections file
-      file.remove(glue("{dbc_path}\\database_credentials.csv"))
-      write_csv(connections, glue("{dbc_path}\\database_credentials.csv"))
+      file.remove(glue("{dbc_path}\\connection_{input$connectionSelect}.csv"))
+      write_csv(database_credentials, glue("{dbc_path}\\connection_{input$connectionSelect}.csv"))
 
-      updateSelectInput(inputId = "connectionSelect", choices = connections$connection)
-      output$dbConnectionsTable <- NULL
     })
   })
 
@@ -915,6 +1193,268 @@ server <- function(input, output, session) {
     }
   })
 
+  #######################################################
+  
+  onclick(
+    "addConnectionButton",
+    {
+      # Show the modal
+      showModal(
+        modalDialog(
+          easyClose = TRUE,
+          size = "m",
+          title = "Add Connection",
+          selectInput(
+            "newConnectionType",
+            "Select new connection type.",
+            choices = c(
+              "postgres",
+              "teradata",
+              "vertica",
+              "snowflake"
+            ),
+            width = "100%"
+          ),
+          div(
+            id = "postgresConnectionForm",
+            style = "display: none;",
+            textInput("newPostgresConnectionName", "Connection Name", width = "100%"),
+            textInput("newPostgresHost", "Host", width = "100%"),
+            textInput("newPostgresUser", "User", width = "100%"),
+            textInput("newPostgresPassword", "Password", width = "100%"),
+            textInput("newPostgresPort", "Port", value = 5432, width = "100%"),
+            textInput("newPostgresDbname", "Database Name", width = "100%"),
+          ),
+          div(
+            id = "teradataConnectionForm",
+            style = "display: none;",
+            textInput("newTeradataConnectionName", "Connection Name", width = "100%"),
+            textInput("newTeradataServer", "Server", width = "100%"),
+            textInput("newTeradataUsername", "Username", width = "100%"),
+            textInput("newTeradataPassword", "Password", width = "100%"),
+          ),
+          div(
+            id = "verticaConnectionForm",
+            style = "display: none;",
+            textInput("newVerticaConnectionName", "Connection Name", width = "100%"),
+            textInput("newVerticaServer", "Server", width = "100%"),
+            textInput("newVerticaUsername", "Username", width = "100%"),
+            textInput("newVerticaPassword", "Password", width = "100%"),
+            textInput("newVerticaPort", "Port", value = 5433, width = "100%"),
+            textInput("newVerticaDatabase", "Database Name", width = "100%"),
+          ),
+          div(
+            id = "snowflakeConnectionForm",
+            style = "display: none;",
+            textInput("newSnowflakeConnectionName", "Connection Name", width = "100%"),
+            textInput("newSnowflakeServer", "Server", width = "100%"),
+            textInput("newSnowflakeUser", "User", width = "100%"),
+            textInput("newSnowflakePassword", "Password", width = "100%"),
+            textInput("newSnowflakeDatabase", "Database", width = "100%"),
+            textInput("newSnowflakeRole", "Role", width = "100%"),
+            textInput("newSnowflakeWarehouse", "Warehouse", width = "100%"),
+          ),
+          footer = tagList(
+            tags$button(
+              id = "createConnection",
+              class = "btn btn-outline-secondary",
+              "Create"
+            ),
+            tags$button(
+              class = "btn btn-outline-primary",
+              id = "confirmNewConnection",
+              style = "display: none;",
+              "Confirm"
+            )
+          )
+        )
+      )
+      
+      onclick(
+        "createConnection",
+        {
+          hideElement("newConnectionType")
+          showElement(
+            id = glue(
+              "{input$newConnectionType}ConnectionForm"
+            ),
+          )
+          hideElement("createConnection")
+          showElement("confirmNewConnection")
+        }
+      )
+      
+      onclick("confirmNewConnection", {
+        if (input$newConnectionType == "postgres"){
+          new_name <- input$newPostgresConnectionName
+          new_host <- input$newPostgresHost
+          new_user <- input$newPostgresUser
+          new_password <- input$newPostgresPassword
+          new_port <- input$newPostgresPort
+          new_dbname <- input$newPostgresDbname
+          
+          connections_df <-
+            read_csv(
+              glue("{dbc_path}\\database_connections.csv"),
+              show_col_types = FALSE
+            )
+          
+          connections_df <-
+            connections_df |>
+            bind_rows(
+              data.frame(
+                connection_id = nrow(connections_df) + 1,
+                connection_name = new_name
+              )
+            )
+          
+          write_csv(
+            data.frame(
+              driver = "postgres",
+              host = new_host,
+              user = new_user,
+              password = new_password,
+              port = new_port,
+              dbname = new_dbname
+            ), 
+            glue(
+              "{dbc_path}\\connection_{nrow(connections_df)}.csv"
+            )
+          )
+        } else if(input$newConnectionType == "teradata"){
+          new_name <- input$newTeradataConnectionName
+          new_server <- input$newTeradataServer
+          new_username <- input$newTeradataUsername
+          new_password <- input$newTeradataPassword
+          
+          connections_df <-
+            read_csv(
+              glue("{dbc_path}\\database_connections.csv"),
+              show_col_types = FALSE
+            )
+          
+          connections_df <-
+            connections_df |>
+            bind_rows(
+              data.frame(
+                connection_id = nrow(connections_df) + 1,
+                connection_name = new_name
+              )
+            )
+          
+          write_csv(
+            data.frame(
+              driver = "teradata",
+              server = new_server,
+              username = new_username,
+              password = new_password
+            ), 
+            glue(
+              "{dbc_path}\\connection_{nrow(connections_df)}.csv"
+            )
+          )
+        } else if(input$newConnectionType == "vertica"){
+          new_name <- input$newVerticaConnectionName
+          new_server <- input$newVerticaServer
+          new_username <- input$newVerticaUsername
+          new_password <- input$newVerticaPassword
+          new_port <- input$newVerticaPort
+          new_database <- input$newVerticaDatabase
+          
+          connections_df <-
+            read_csv(
+              glue("{dbc_path}\\database_connections.csv"),
+              show_col_types = FALSE
+            )
+          
+          connections_df <-
+            connections_df |>
+            bind_rows(
+              data.frame(
+                connection_id = nrow(connections_df) + 1,
+                connection_name = new_name
+              )
+            )
+          
+          write_csv(
+            data.frame(
+              driver = "vertica",
+              server = new_server,
+              username = new_username,
+              password = new_password,
+              port = new_port,
+              database = new_database
+            ), 
+            glue(
+              "{dbc_path}\\connection_{nrow(connections_df)}.csv"
+            )
+          )
+          
+        } else if(input$newConnectionType == "snowflake"){
+          new_name <- input$newSnowflakeConnectionName
+          new_server <- input$newSnowflakeServer
+          new_user <- input$newSnowflakeUser
+          new_password <- input$newSnowflakePassword
+          new_database <- input$newSnowflakeDatabase
+          new_role <- input$newSnowflakeRole
+          new_warehouse <- input$newSnowflakeWarehouse
+          
+          connections_df <-
+            read_csv(
+              glue("{dbc_path}\\database_connections.csv"),
+              show_col_types = FALSE
+            )
+          
+          connections_df <-
+            connections_df |>
+            bind_rows(
+              data.frame(
+                connection_id = nrow(connections_df) + 1,
+                connection_name = new_name
+              )
+            )
+          
+          write_csv(
+            data.frame(
+              driver = "snowflake",
+              server = new_server,
+              user = new_user,
+              password = new_password,
+              database = new_database,
+              role = new_role,
+              warehouse = new_warehouse
+            ), 
+            glue(
+              "{dbc_path}\\connection_{nrow(connections_df)}.csv"
+            )
+          )
+        }
+        
+        
+        # Replace the connections file
+        file.remove(
+          glue("{dbc_path}\\database_connections.csv")
+        )
+        write_csv(
+          connections_df,
+          glue("{dbc_path}\\database_connections.csv")
+        )
+        
+        connections <- connections_df$connection_id
+        names(connections) <- connections_df$connection_name
+        
+        updateSelectInput(
+          inputId = "connectionSelect",
+          choices = connections,
+          selected = connections[-1]
+        )
+        
+        removeModal()
+      }
+      )
+    }
+  )
+  
   #######################################################
 
 
