@@ -876,6 +876,12 @@ server <- function(input, output, session) {
             "Clean column names?",
             choices = c("Yes", "No"),
             selected = "Yes"
+          ),
+          selectInput(
+            "tempTable",
+            "Temporary table?",
+            choices = c("Yes", "No"),
+            selected = "Yes"
           )
         ),
         footer = tagList(
@@ -900,7 +906,8 @@ server <- function(input, output, session) {
           dbWriteTable(con,
             name = Id(table = input$newTableName, schema = input$schema),
             value = data.frame(new_table),
-            overwrite = TRUE
+            overwrite = TRUE,
+            temporary = ifelse(input$tempTable == "Yes", TRUE, FALSE)
           )
           result <- "Success"
         },
