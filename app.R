@@ -1080,11 +1080,24 @@ server <- function(input, output, session) {
           # Set search path
           if (driver %in% c("postgres", "vertica")){
             dbSendQuery(con, glue("SET search_path TO public, {input$schema}"))
+          } else if (driver == "snowflake"){
+            dbSendQuery(con, glue("USE SCHEMA {input$schema}"))
           }
-
+        
           # Get the number of rows
-          n_rows <-
-            get_n_rows()
+          n_rows <- dbGetQuery(
+            con,
+            glue(
+              "
+              WITH cte1 AS ({query}) SELECT COUNT(*) FROM cte1
+              "
+            )
+          ) |>
+            pull(
+              COUNT
+            )
+          
+          print(n_rows)
 
           # Get the result
           dbGetQuery(con, query)
@@ -1099,6 +1112,8 @@ server <- function(input, output, session) {
           # Set search path
           if (driver %in% c("postgres", "vertica")){
             dbSendQuery(con, glue("SET search_path TO public, {input$schema}"))
+          } else if (driver == "snowflake"){
+            dbSendQuery(con, glue("USE SCHEMA {input$schema}"))
           }
 
           # Send query
@@ -1157,6 +1172,8 @@ server <- function(input, output, session) {
           # Set search path
           if (driver %in% c("postgres", "vertica")){
             dbSendQuery(con, glue("SET search_path TO public, {input$schema}"))
+          } else if (driver == "snowflake"){
+            dbSendQuery(con, glue("USE SCHEMA {input$schema}"))
           }
 
           # Get query and write to csv
