@@ -903,12 +903,36 @@ server <- function(input, output, session) {
       # Write data frame to DB
       result <- tryCatch(
         {
-          dbWriteTable(con,
-            name = Id(table = input$newTableName, schema = input$schema),
-            value = data.frame(new_table),
-            overwrite = TRUE,
-            temporary = ifelse(input$tempTable == "Yes", TRUE, FALSE)
-          )
+          if (driver == "snowflake"){
+            dbSendQuery(con, glue("USE SCHEMA {input$schema}"))
+            dbWriteTable(
+              con,
+              name = input$newTableName,
+              value = data.frame(new_table),
+              overwrite = TRUE,
+              temporary = ifelse(
+                input$tempTable == "Yes",
+                TRUE,
+                FALSE
+              )
+            )
+          } else {
+            dbWriteTable(
+              con,
+              name = Id(
+                table = input$newTableName,
+                schema = input$schema
+              ),
+              value = data.frame(new_table),
+              overwrite = TRUE,
+              temporary = ifelse(
+                input$tempTable == "Yes",
+                TRUE,
+                FALSE
+              )
+            )
+          }
+          
           result <- "Success"
         },
         error = function(error) {
